@@ -9,4 +9,5 @@ nibabel
 scikit-image
 openpyxl
 matplotlib
+PyYAML
 

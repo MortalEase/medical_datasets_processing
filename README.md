@@ -50,5 +50,34 @@ python yolo2coco.py --root_dir 数据集根目录 --save_path 输出json文件�
 # 可选参数：--random_split (随机划分) --split_by_file (按文件划分)
 ```
 
+## universal_label_cleaner.py
+通用YOLO数据集标签清理工具：
+```bash
+# 交互式清理（推荐）
+python universal_label_cleaner.py 数据集根目录
+
+# 自动清理 - 删除少于50个样本的类别
+python universal_label_cleaner.py 数据集根目录 --auto-clean min_samples:50
+
+# 自动清理 - 删除少于2%的类别
+python universal_label_cleaner.py 数据集根目录 --auto-clean min_percentage:2.0
+
+# 不创建备份
+python universal_label_cleaner.py 数据集根目录 --no-backup
+
+# 静默模式
+python universal_label_cleaner.py 数据集根目录 --quiet
+
+# 指定类别文件
+python universal_label_cleaner.py 数据集根目录 --class-file custom_classes.txt
+```
+
+## clean_gynecology_dataset.py
+gynecology-mri数据集专用清理工具：
+```bash
+python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
+# 清理gynecology-mri数据集，移除标注过少的类别
+```
+
 ---
 使用 `-h` 或 `--help` 查看详细参数说明。
