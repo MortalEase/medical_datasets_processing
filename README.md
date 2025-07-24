@@ -102,7 +102,22 @@ python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO
 # 自定义窗宽窗位
 python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO \
                           --window_center 400 --window_width 1500
+
+# 自定义最小边界框面积（过滤小目标）
+python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO \
+                          --min_area 50
+
+# 完整参数示例
+python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO \
+                          --window_center 400 --window_width 1500 --min_area 100
 ```
+
+**参数说明**：
+- `--min_area`: 最小边界框面积阈值（单位：像素），默认100像素
+  - 小于此面积的骨折区域将被过滤掉
+  - 建议值：50-200像素，根据数据集特点调整
+  - 值越小，保留的小目标越多，但可能包含噪声
+  - 值越大，过滤掉的小目标越多，但可能丢失真实骨折
 
 ---
 使用 `-h` 或 `--help` 查看详细参数说明。
