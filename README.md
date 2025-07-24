@@ -7,6 +7,20 @@ python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录
 # 可选参数：--train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1 --seed 42
 ```
 
+## coco_dataset_split.py
+COCO数据集划分：
+```bash
+# 基础划分
+python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split
+
+# 自定义比例
+python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split \
+                             --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
+
+# 自定义随机种子
+python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split --seed 42
+```
+
 ## convert_medical_to_yolo.py
 医学影像转YOLO格式：
 ```bash
@@ -77,6 +91,17 @@ gynecology-mri数据集专用清理工具：
 ```bash
 python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 # 清理gynecology-mri数据集，移除标注过少的类别
+```
+
+## ribfrac_to_coco.py
+RibFrac 3D CT转COCO格式目标检测：
+```bash
+# 基础转换
+python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO
+
+# 自定义窗宽窗位
+python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO \
+                          --window_center 400 --window_width 1500
 ```
 
 ---
