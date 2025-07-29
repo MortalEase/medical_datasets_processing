@@ -23,26 +23,39 @@ def find_corresponding_image(label_file, images_dir):
     return None
 
 
-def split_dataset(base_dir, output_dir, split_ratios):
+def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
     """
-    按指定比例划分数据集，确保各类别在训练、验证、测试集中尽可能均衡。
+    按指定比例划分数据集，确保各类别在训练、验证、测试集中尽可能均衡
 
     Args:
-        base_dir (str): 数据集的根目录，需包含 images 和 labels 文件夹。
-        output_dir (str): 输出数据集的根目录。
-        split_ratios (dict): 数据集划分比例，例如 {"train": 0.8, "val": 0.1, "test": 0.1}。
+        base_dir (str): 数据集的根目录，需包含 images 和 labels 文件夹
+        output_dir (str): 输出数据集的根目录
+        split_ratios (dict): 数据集划分比例，例如 {"train": 0.8, "val": 0.1, "test": 0.1}
+        output_format (int): 输出格式，1为格式一，2为格式二 (默认: 1)
     """
     images_dir = os.path.join(base_dir, "images")
     labels_dir = os.path.join(base_dir, "labels")
 
-    train_dir = os.path.join(output_dir, "train")
-    val_dir = os.path.join(output_dir, "val")
-    test_dir = os.path.join(output_dir, "test")
-
-    # 创建输出目录
-    for split in [train_dir, val_dir, test_dir]:
-        os.makedirs(os.path.join(split, "images"), exist_ok=True)
-        os.makedirs(os.path.join(split, "labels"), exist_ok=True)
+    if output_format == 1:
+        # 格式一: yolo/train/images/, yolo/train/labels/, etc.
+        train_dir = os.path.join(output_dir, "train")
+        val_dir = os.path.join(output_dir, "val")
+        test_dir = os.path.join(output_dir, "test")
+        
+        # 创建输出目录
+        for split in [train_dir, val_dir, test_dir]:
+            os.makedirs(os.path.join(split, "images"), exist_ok=True)
+            os.makedirs(os.path.join(split, "labels"), exist_ok=True)
+    else:
+        # 格式二: yolo_dataset/images/train/, yolo_dataset/labels/train/, etc.
+        train_dir = output_dir
+        val_dir = output_dir
+        test_dir = output_dir
+        
+        # 创建输出目录
+        for data_type in ["images", "labels"]:
+            for split in ["train", "val", "test"]:
+                os.makedirs(os.path.join(output_dir, data_type, split), exist_ok=True)
 
     # 获取所有标签文件
     label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
@@ -86,13 +99,22 @@ def split_dataset(base_dir, output_dir, split_ratios):
         for image_file in file_list:
             # 图片文件路径
             src_image_path = os.path.join(images_dir, image_file)
-            dst_image_path = os.path.join(output_dir, split, "images", image_file)
-            if os.path.exists(src_image_path):  # 确保图片存在
-                shutil.copy(src_image_path, dst_image_path)
+            
             # 标签文件路径
             label_file = os.path.splitext(image_file)[0] + ".txt"  # 获取对应的标签文件名
             src_label_path = os.path.join(labels_dir, label_file)
-            dst_label_path = os.path.join(output_dir, split, "labels", label_file)
+            
+            if output_format == 1:
+                # 格式一: yolo/train/images/, yolo/train/labels/
+                dst_image_path = os.path.join(output_dir, split, "images", image_file)
+                dst_label_path = os.path.join(output_dir, split, "labels", label_file)
+            else:
+                # 格式二: yolo_dataset/images/train/, yolo_dataset/labels/train/
+                dst_image_path = os.path.join(output_dir, "images", split, image_file)
+                dst_label_path = os.path.join(output_dir, "labels", split, label_file)
+            
+            if os.path.exists(src_image_path):  # 确保图片存在
+                shutil.copy(src_image_path, dst_image_path)
             if os.path.exists(src_label_path):  # 只复制有标签的图片的标签
                 shutil.copy(src_label_path, dst_label_path)
 
@@ -104,7 +126,8 @@ def split_dataset(base_dir, output_dir, split_ratios):
     total_original = len(all_image_files)
     total_split = len(train_files) + len(val_files) + len(test_files)
     
-    print(f"数据集划分完成！")
+    format_desc = "格式一 (train/images/, train/labels/)" if output_format == 1 else "格式二 (images/train/, labels/train/)"
+    print(f"数据集划分完成！输出格式: {format_desc}")
     print(f"原始总图片数: {total_original}")
     print(f"划分后总数: {total_split}")
     print(f"训练集: {len(train_files)} 张图片 ({len(train_files)/total_original*100:.1f}%)")
@@ -157,6 +180,8 @@ def main():
                        help="测试集比例 (默认: 0.1)")
     parser.add_argument("--seed", type=int, default=42,
                        help="随机种子 (默认: 42)")
+    parser.add_argument("--output_format", type=int, choices=[1, 2], default=1,
+                       help="输出格式: 1=格式一(train/images/), 2=格式二(images/train/) (默认: 1)")
     
     args = parser.parse_args()
     
@@ -195,6 +220,7 @@ def main():
     print(f"开始划分数据集...")
     print(f"输入目录: {args.input_dir}")
     print(f"输出目录: {args.output_dir}")
+    print(f"输出格式: {args.output_format} ({'格式一' if args.output_format == 1 else '格式二'})")
     print(f"训练集比例: {args.train_ratio}")
     print(f"验证集比例: {args.val_ratio}")
     print(f"测试集比例: {args.test_ratio}")
@@ -202,7 +228,7 @@ def main():
     print("-" * 50)
     
     # 执行数据集划分
-    split_dataset(args.input_dir, args.output_dir, split_ratios)
+    split_dataset(args.input_dir, args.output_dir, split_ratios, args.output_format)
 
 
 if __name__ == "__main__":

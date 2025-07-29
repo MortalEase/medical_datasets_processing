@@ -16,23 +16,30 @@ YOLO数据集支持以下两种主要组织形式：
 ## yolo_dataset_split.py
 YOLO数据集划分工具
 
-**输入**：
-- ✅ `dataset/images + dataset/labels`
+**输入格式要求**：
+- ✅ 输入必须为: `dataset/images/ + dataset/labels/`
 
-**输出**：
-- 输入：格式二 `dataset/images/train/ + dataset/labels/train/` 等
-- 输出：格式一 `output/train/images/, output/train/labels/` 等
+**输出格式支持**：
+- ✅ 格式一：`output/train/images/, output/train/labels/` 等 (默认)
+- ✅ 格式二：`output/images/train/, output/labels/train/` 等
 
 ```bash
-# 基础划分
+# 基础划分 (默认输出格式一)
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录
+
+# 指定输出格式一
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --output_format 1
+
+# 指定输出格式二
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --output_format 2
 
 # 自定义比例划分
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 \
-                             --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
+                             --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1 \
+                             --output_format 1
 
 # 设置随机种子保证可重现
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 --output_format 2
 ```
 
 **功能特点**：
