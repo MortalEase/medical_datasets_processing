@@ -65,37 +65,21 @@ def split_dataset(base_dir, output_dir, split_ratios):
         for c in classes:
             class_to_images[c].append(corresponding_image)
 
-    # 将每个类别的图片按比例划分
-    train_files, val_files, test_files = [], [], []
-
-    for c, images in class_to_images.items():
-        random.shuffle(images)
-        total_files = len(images)
-        train_count = int(total_files * split_ratios["train"])
-        val_count = int(total_files * split_ratios["val"])
-        test_count = total_files - train_count - val_count  # 剩余归为测试集
-
-        train_files.extend(images[:train_count])
-        val_files.extend(images[train_count:train_count + val_count])
-        test_files.extend(images[train_count + val_count:])
-
-    # 处理背景图片（无标签图片）
+    # 获取所有图片文件（包括有标签和无标签的）
     all_image_files = [f for f in os.listdir(images_dir) if os.path.splitext(f)[1].lower() in get_image_extensions()]
-    labeled_images = set(image_to_classes.keys())
-    background_images = [f for f in all_image_files if f not in labeled_images]
-    random.shuffle(background_images)
-    total_bg = len(background_images)
-    train_bg = int(total_bg * split_ratios["train"])
-    val_bg = int(total_bg * split_ratios["val"])
-    test_bg = total_bg - train_bg - val_bg
-    train_files.extend(background_images[:train_bg])
-    val_files.extend(background_images[train_bg:train_bg + val_bg])
-    test_files.extend(background_images[train_bg + val_bg:])
-
-    # 去重并保持数据分布均衡
-    train_files = list(set(train_files))
-    val_files = list(set(val_files))
-    test_files = list(set(test_files))
+    
+    # 随机打乱所有图片
+    random.shuffle(all_image_files)
+    
+    # 按比例划分
+    total_files = len(all_image_files)
+    train_count = int(total_files * split_ratios["train"])
+    val_count = int(total_files * split_ratios["val"])
+    test_count = total_files - train_count - val_count  # 剩余归为测试集
+    
+    train_files = all_image_files[:train_count]
+    val_files = all_image_files[train_count:train_count + val_count]
+    test_files = all_image_files[train_count + val_count:]
 
     # 复制文件到对应目录
     def copy_files(file_list, split):
@@ -116,10 +100,47 @@ def split_dataset(base_dir, output_dir, split_ratios):
     copy_files(val_files, "val")
     copy_files(test_files, "test")
 
+    # 统计信息
+    total_original = len(all_image_files)
+    total_split = len(train_files) + len(val_files) + len(test_files)
+    
     print(f"数据集划分完成！")
-    print(f"训练集: {len(train_files)} 张图片")
-    print(f"验证集: {len(val_files)} 张图片")
-    print(f"测试集: {len(test_files)} 张图片")
+    print(f"原始总图片数: {total_original}")
+    print(f"划分后总数: {total_split}")
+    print(f"训练集: {len(train_files)} 张图片 ({len(train_files)/total_original*100:.1f}%)")
+    print(f"验证集: {len(val_files)} 张图片 ({len(val_files)/total_original*100:.1f}%)")
+    print(f"测试集: {len(test_files)} 张图片 ({len(test_files)/total_original*100:.1f}%)")
+    
+    # 验证数据完整性
+    if total_original == total_split:
+        print("✓ 数据完整性验证通过")
+    else:
+        print(f"✗ 警告: 数据不完整，丢失了 {total_original - total_split} 张图片")
+    
+    # 统计各集合中有标签的图片数量
+    labeled_in_train = sum(1 for img in train_files if img in image_to_classes)
+    labeled_in_val = sum(1 for img in val_files if img in image_to_classes)
+    labeled_in_test = sum(1 for img in test_files if img in image_to_classes)
+    
+    print(f"\n标签图片分布:")
+    print(f"训练集标签图片: {labeled_in_train}")
+    print(f"验证集标签图片: {labeled_in_val}")
+    print(f"测试集标签图片: {labeled_in_test}")
+    print(f"总标签图片: {len(image_to_classes)}")
+    
+    # 统计各类别在不同集合中的分布
+    if image_to_classes:
+        print(f"\n类别分布统计:")
+        all_classes = set()
+        for classes in image_to_classes.values():
+            all_classes.update(classes)
+        
+        for class_id in sorted(all_classes):
+            train_count = sum(1 for img in train_files if img in image_to_classes and class_id in image_to_classes[img])
+            val_count = sum(1 for img in val_files if img in image_to_classes and class_id in image_to_classes[img])
+            test_count = sum(1 for img in test_files if img in image_to_classes and class_id in image_to_classes[img])
+            total_class = len(class_to_images[class_id])
+            print(f"类别 {class_id}: 训练集{train_count}, 验证集{val_count}, 测试集{test_count}, 总计{total_class}")
 
 
 def main():
