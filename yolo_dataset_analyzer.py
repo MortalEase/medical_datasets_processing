@@ -1,25 +1,124 @@
 import os
 from pathlib import Path
 import argparse
-import cv2
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+import yaml
 import random
-import numpy as np
-
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
 
 
-def check_yolo_dataset(img_dir, label_dir, img_exts=['.jpg', '.png', '.jpeg']):
+def get_image_extensions():
+    """返回支持的图片格式扩展名"""
+    return ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
+
+
+def find_classes_file(dataset_dir):
+    """查找classes.txt文件"""
+    possible_paths = [
+        os.path.join(dataset_dir, 'classes.txt'),
+        os.path.join(dataset_dir, 'obj.names'),
+        os.path.join(dataset_dir, 'names.txt'),
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def find_data_yaml(dataset_dir):
+    """查找data.yaml文件"""
+    possible_paths = [
+        os.path.join(dataset_dir, 'data.yaml'),
+        os.path.join(dataset_dir, 'data.yml'),
+        os.path.join(dataset_dir, 'dataset.yaml'),
+        os.path.join(dataset_dir, 'dataset.yml'),
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def load_class_names(dataset_dir):
+    """加载类别名称"""
+    # 优先查找data.yaml
+    yaml_path = find_data_yaml(dataset_dir)
+    if yaml_path:
+        try:
+            with open(yaml_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if 'names' in data:
+                    if isinstance(data['names'], list):
+                        return {i: name for i, name in enumerate(data['names'])}
+                    elif isinstance(data['names'], dict):
+                        return data['names']
+        except:
+            pass
+    
+    # 查找classes.txt
+    classes_path = find_classes_file(dataset_dir)
+    if classes_path:
+        try:
+            with open(classes_path, 'r', encoding='utf-8') as f:
+                names = [line.strip() for line in f if line.strip()]
+                return {i: name for i, name in enumerate(names)}
+        except:
+            pass
+    
+    return {}
+
+
+def detect_dataset_structure(dataset_dir):
+    """检测数据集结构类型"""
+    images_dir = os.path.join(dataset_dir, 'images')
+    labels_dir = os.path.join(dataset_dir, 'labels')
+    
+    # 检查是否有train/val/test分层结构
+    train_images = os.path.join(dataset_dir, 'train', 'images')
+    train_labels = os.path.join(dataset_dir, 'train', 'labels')
+    val_images = os.path.join(dataset_dir, 'val', 'images')
+    val_labels = os.path.join(dataset_dir, 'val', 'labels')
+    test_images = os.path.join(dataset_dir, 'test', 'images')
+    test_labels = os.path.join(dataset_dir, 'test', 'labels')
+    
+    if (os.path.exists(train_images) and os.path.exists(train_labels)) or \
+       (os.path.exists(val_images) and os.path.exists(val_labels)) or \
+       (os.path.exists(test_images) and os.path.exists(test_labels)):
+        return 'hierarchical'  # 分层结构
+    elif os.path.exists(images_dir) and os.path.exists(labels_dir):
+        return 'simple'  # 简单结构
+    else:
+        return 'unknown'
+
+
+def get_dataset_paths(dataset_dir):
+    """根据数据集结构获取所有images和labels路径"""
+    structure = detect_dataset_structure(dataset_dir)
+    paths = []
+    
+    if structure == 'hierarchical':
+        # 分层结构
+        for split in ['train', 'val', 'test']:
+            images_dir = os.path.join(dataset_dir, split, 'images')
+            labels_dir = os.path.join(dataset_dir, split, 'labels')
+            if os.path.exists(images_dir) and os.path.exists(labels_dir):
+                paths.append((split, images_dir, labels_dir))
+    elif structure == 'simple':
+        # 简单结构
+        images_dir = os.path.join(dataset_dir, 'images')
+        labels_dir = os.path.join(dataset_dir, 'labels')
+        paths.append(('dataset', images_dir, labels_dir))
+    
+    return structure, paths
+
+
+def check_yolo_dataset(img_dir, label_dir, img_exts=None):
     """
     检查YOLO数据集图片与标注的对应关系
-    :param img_dir: 图片文件夹路径
-    :param label_dir: 标注文件夹路径
-    :param img_exts: 支持的图片扩展名列表
-    :return: 缺失标注的图片列表，冗余标注的文件列表
     """
+    if img_exts is None:
+        img_exts = get_image_extensions()
+    
     # 获取文件名集合（不含扩展名）
     img_stems = {Path(f).stem for f in os.listdir(img_dir)
                  if Path(f).suffix.lower() in img_exts}
@@ -46,193 +145,43 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=['.jpg', '.png', '.jpeg']):
     return missing_files, redundant_files
 
 
-def generate_report(missing, redundant):
-    """生成可视化报告"""
-    print(f"\n{'=' * 30} 检查报告 {'=' * 30}")
-    print(f"总缺失标注文件: {len(missing)} 个")
-    print(f"总冗余标注文件: {len(redundant)} 个\n")
+def generate_report(split_name, missing, redundant):
+    """生成检查报告"""
+    print(f"\n{'=' * 20} {split_name} 检查报告 {'=' * 20}")
+    print(f"缺失标注文件: {len(missing)} 个")
+    print(f"冗余标注文件: {len(redundant)} 个")
 
     if missing:
-        print("[ 缺失标注的图片 ]")
+        print("\n[ 缺失标注的图片 ]")
         for f in missing[:5]:  # 最多显示前5个
-            print(f"  ! {f}")
-        if len(missing) > 5: print(f"  ...（共{len(missing)}个）")
+            print(f"  ! {os.path.basename(f)}")
+        if len(missing) > 5: 
+            print(f"  ...（还有{len(missing)-5}个）")
 
     if redundant:
         print("\n[ 冗余的标注文件 ]")
         for f in redundant[:5]:
-            print(f"  x {f}")
-        if len(redundant) > 5: print(f"  ...（共{len(redundant)}个）")
+            print(f"  x {os.path.basename(f)}")
+        if len(redundant) > 5: 
+            print(f"  ...（还有{len(redundant)-5}个）")
 
 
-def visualize_dataset(img_dir, label_dir, output_dir, sample_size=5):
-    """
-    可视化YOLO数据集的图片和标注
-    :param img_dir: 图片文件夹路径
-    :param label_dir: 标注文件夹路径
-    :param output_dir: 输出文件夹路径
-    :param sample_size: 随机抽样的图片数量
-    """
-    # 获取所有图片文件
-    img_files = [f for f in os.listdir(img_dir) if Path(f).suffix.lower() in ['.jpg', '.png', '.jpeg']]
-
-    # 随机抽样
-    sampled_imgs = random.sample(img_files, min(sample_size, len(img_files)))
-
-    for img_file in sampled_imgs:
-        img_path = Path(img_dir) / img_file
-        label_path = Path(label_dir) / (Path(img_file).stem + '.txt')
-
-        # 读取图片
-        img = cv2.imread(str(img_path))
-        h, w, _ = img.shape
-
-        # 创建绘图对象
-        fig, ax = plt.subplots(1)
-        ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-
-        # 读取并绘制标注
-        if label_path.exists():
-            with open(label_path, 'r') as f:
-                for line in f.readlines():
-                    class_id, x_center, y_center, width, height = map(float, line.strip().split())
-                    # 转换为左上角坐标和右下角坐标
-                    x_center, y_center, width, height = x_center * w, y_center * h, width * w, height * h
-                    x1, y1, x2, y2 = int(x_center - width / 2), int(y_center - height / 2), int(x_center + width / 2), int(y_center + height / 2)
-
-                    # 绘制矩形框
-                    rect = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2, edgecolor='red', facecolor='none')
-                    ax.add_patch(rect)
-                    # 绘制类别标签
-                    ax.text(x1, y1, f'Class {int(class_id)}', fontsize=12, color='red', bbox=dict(facecolor='white', alpha=0.5))
-
-        # 保存或显示图片
-        output_path = Path(output_dir) / img_file
-        plt.axis('off')
-        plt.savefig(str(output_path), bbox_inches='tight')
-        plt.close(fig)
-
-
-def visualize_yolo_annotations(img_dir, label_dir, num_samples=6, img_exts=['.jpg', '.png', '.jpeg']):
-    """
-    可视化YOLO数据集中的图片和标注框
-    :param img_dir: 图片文件夹路径
-    :param label_dir: 标注文件夹路径
-    :param num_samples: 要显示的样本数量
-    :param img_exts: 支持的图片扩展名列表
-    """
-    # 获取所有有标注的图片文件（过滤掉背景图）
-    img_files = []
-    for f in os.listdir(img_dir):
-        if Path(f).suffix.lower() in img_exts:
-            img_path = Path(img_dir) / f
-            label_path = Path(label_dir) / (Path(f).stem + '.txt')
-            
-            # 检查标注文件是否存在且非空
-            if label_path.exists():
-                try:
-                    with open(label_path, 'r') as file:
-                        lines = file.readlines()                        # 只选择有实际标注内容的图片
-                        if lines and any(line.strip() for line in lines):
-                            img_files.append((str(img_path), str(label_path)))
-                except:
-                    continue
-    
-    if not img_files:
-        print("❌ 没有找到有标注的图片！所有图片都是背景图。")
-        return
-    
-    print(f"📋 找到 {len(img_files)} 张有标注的图片（过滤掉了背景图）")
-    
-    # 随机选择样本
-    samples = random.sample(img_files, min(num_samples, len(img_files)))
-    
-    # 创建子图
-    cols = 3
-    rows = (len(samples) + cols - 1) // cols
-    fig, axes = plt.subplots(rows, cols, figsize=(15, 5*rows))
-    if len(samples) == 1:
-        axes = [axes]
-    elif rows == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten()
-    
-    for idx, (img_path, label_path) in enumerate(samples):
-        # 读取图片
-        img = cv2.imread(img_path)
-        if img is None:
-            continue
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        h, w = img.shape[:2]
-        
-        # 读取YOLO标注
-        boxes = []
-        try:
-            with open(label_path, 'r') as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 5:
-                        class_id, x_center, y_center, width, height = map(float, parts[:5])
-                        boxes.append((class_id, x_center, y_center, width, height))
-        except:
-            continue
-        
-        # 显示图片
-        axes[idx].imshow(img)
-        axes[idx].set_title(f'{Path(img_path).name}\n标注框数量: {len(boxes)}', fontsize=10)
-        axes[idx].axis('off')
-        
-        # 绘制标注框
-        colors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'magenta']
-        for i, (class_id, x_center, y_center, box_width, box_height) in enumerate(boxes):
-            # YOLO格式转换为像素坐标
-            x_center_px = x_center * w
-            y_center_px = y_center * h
-            box_width_px = box_width * w
-            box_height_px = box_height * h
-            
-            # 计算左上角坐标
-            x1 = x_center_px - box_width_px / 2
-            y1 = y_center_px - box_height_px / 2
-            
-            # 绘制矩形框
-            color = colors[int(class_id) % len(colors)]
-            rect = patches.Rectangle((x1, y1), box_width_px, box_height_px, 
-                                   linewidth=2, edgecolor=color, facecolor='none')
-            axes[idx].add_patch(rect)
-            
-            # 添加类别标签
-            axes[idx].text(x1, y1-5, f'Class {int(class_id)}', 
-                         color=color, fontsize=8, fontweight='bold',
-                         bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.7))
-    
-    # 隐藏多余的子图
-    for idx in range(len(samples), len(axes)):
-        axes[idx].axis('off')
-    
-    plt.tight_layout()
-    plt.show()
-    
-    print(f"✅ 已展示 {len(samples)} 个样本的可视化结果")
-
-
-def analyze_annotation_statistics(img_dir, label_dir, img_exts=['.jpg', '.png', '.jpeg']):
-    """
-    分析标注统计信息
-    """
+def analyze_annotation_statistics(img_dir, label_dir, split_name="", class_names=None):
+    """分析标注统计信息"""
+    img_exts = get_image_extensions()
     total_images = 0
+    labeled_images = 0
     total_boxes = 0
     class_counts = {}
     box_counts_per_image = []
     
     for f in os.listdir(img_dir):
         if Path(f).suffix.lower() in img_exts:
-            img_path = Path(img_dir) / f
+            total_images += 1
             label_path = Path(label_dir) / (Path(f).stem + '.txt')
             
             if label_path.exists():
-                total_images += 1
+                labeled_images += 1
                 boxes_in_image = 0
                 
                 try:
@@ -250,54 +199,115 @@ def analyze_annotation_statistics(img_dir, label_dir, img_exts=['.jpg', '.png', 
                 box_counts_per_image.append(boxes_in_image)
     
     # 生成统计报告
-    print(f"\n{'='*40} 标注统计分析 {'='*40}")
+    prefix = f"{split_name} " if split_name else ""
+    print(f"\n{'='*30} {prefix}标注统计分析 {'='*30}")
     print(f"📊 图片总数: {total_images}")
+    print(f"📊 有标注图片数: {labeled_images}")
+    print(f"📊 背景图片数: {total_images - labeled_images}")
     print(f"📊 标注框总数: {total_boxes}")
-    print(f"📊 平均每张图片的标注框数: {total_boxes/total_images:.2f}" if total_images > 0 else "📊 平均每张图片的标注框数: 0")
+    if labeled_images > 0:
+        print(f"📊 平均每张有标注图片的标注框数: {total_boxes/labeled_images:.2f}")
     
     if box_counts_per_image:
         print(f"📊 单张图片最多标注框数: {max(box_counts_per_image)}")
         print(f"📊 单张图片最少标注框数: {min(box_counts_per_image)}")
     
-    print(f"\n📈 各类别标注框分布:")
-    for class_id, count in sorted(class_counts.items()):
-        percentage = (count / total_boxes) * 100 if total_boxes > 0 else 0
-        print(f"   类别 {class_id}: {count} 个 ({percentage:.1f}%)")
+    if class_counts:
+        print(f"\n📈 各类别标注框分布:")
+        for class_id in sorted(class_counts.keys()):
+            count = class_counts[class_id]
+            percentage = (count / total_boxes) * 100 if total_boxes > 0 else 0
+            class_name = class_names.get(class_id, f"Class_{class_id}") if class_names else f"Class_{class_id}"
+            print(f"   类别 {class_id} ({class_name}): {count} 个 ({percentage:.1f}%)")
     
-    return total_images, total_boxes, class_counts
+    return total_images, labeled_images, total_boxes, class_counts
+
+
+def analyze_dataset(dataset_dir, show_stats=False):
+    """分析整个数据集"""
+    print(f"🔍 开始分析数据集: {dataset_dir}")
+    
+    # 检测数据集结构
+    structure, paths = get_dataset_paths(dataset_dir)
+    
+    if not paths:
+        print("❌ 错误: 未找到有效的YOLO数据集结构")
+        print("支持的结构:")
+        print("  1. 简单结构: dataset/images/ + dataset/labels/")
+        print("  2. 分层结构: dataset/train/images/ + dataset/train/labels/ 等")
+        return
+    
+    # 加载类别名称
+    class_names = load_class_names(dataset_dir)
+    
+    print(f"📁 检测到数据集结构: {'分层结构' if structure == 'hierarchical' else '简单结构'}")
+    if class_names:
+        print(f"📋 加载了 {len(class_names)} 个类别名称")
+    else:
+        print("⚠️  未找到类别名称文件 (classes.txt 或 data.yaml)")
+    
+    # 分析每个数据集分割
+    total_missing = 0
+    total_redundant = 0
+    all_stats = {}
+    
+    for split_name, img_dir, label_dir in paths:
+        # 检查对应关系
+        missing, redundant = check_yolo_dataset(img_dir, label_dir)
+        generate_report(split_name, missing, redundant)
+        
+        total_missing += len(missing)
+        total_redundant += len(redundant)
+        
+        # 统计分析
+        if show_stats:
+            stats = analyze_annotation_statistics(img_dir, label_dir, split_name, class_names)
+            all_stats[split_name] = stats
+    
+    # 总体摘要
+    print(f"\n{'='*30} 总体摘要 {'='*30}")
+    print(f"📊 数据集分割数: {len(paths)}")
+    print(f"⚠️  总缺失标注: {total_missing}")
+    print(f"⚠️  总冗余标注: {total_redundant}")
+    
+    if show_stats and all_stats:
+        total_images = sum(stats[0] for stats in all_stats.values())
+        total_labeled = sum(stats[1] for stats in all_stats.values())
+        total_boxes = sum(stats[2] for stats in all_stats.values())
+        
+        print(f"📊 总图片数: {total_images}")
+        print(f"📊 总有标注图片数: {total_labeled}")
+        print(f"📊 总标注框数: {total_boxes}")
+        
+        # 合并类别统计
+        combined_classes = {}
+        for stats in all_stats.values():
+            for class_id, count in stats[3].items():
+                combined_classes[class_id] = combined_classes.get(class_id, 0) + count
+        
+        if combined_classes:
+            print(f"\n📈 整体类别分布:")
+            for class_id in sorted(combined_classes.keys()):
+                count = combined_classes[class_id]
+                percentage = (count / total_boxes) * 100 if total_boxes > 0 else 0
+                class_name = class_names.get(class_id, f"Class_{class_id}") if class_names else f"Class_{class_id}"
+                print(f"   类别 {class_id} ({class_name}): {count} 个 ({percentage:.1f}%)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="检查YOLO数据集图片与标签对应关系")
-    parser.add_argument('--img_dir', '-i', required=True, help='图片文件夹路径')
-    parser.add_argument('--label_dir', '-l', required=True, help='标签文件夹路径')
-    parser.add_argument('--visualize', '-v', action='store_true', help='显示图片和检测框可视化')
-    parser.add_argument('--samples', '-s', type=int, default=6, help='可视化样本数量 (默认6)')
-    parser.add_argument('--stats', action='store_true', help='显示详细统计信息')
+    parser = argparse.ArgumentParser(description="YOLO数据集分析工具 - 支持多种数据集结构")
+    parser.add_argument('--dataset_dir', '-d', required=True, 
+                       help='数据集根目录路径')
+    parser.add_argument('--stats', '-s', action='store_true', 
+                       help='显示详细统计信息')
+    
     args = parser.parse_args()
-    IMAGE_DIR = args.img_dir
-    LABEL_DIR = args.label_dir
-
-    # 检查图片与标签对应关系
-    missing, redundant = check_yolo_dataset(IMAGE_DIR, LABEL_DIR)
-    generate_report(missing, redundant)
     
-    # 显示统计信息
-    if args.stats or args.visualize:
-        analyze_annotation_statistics(IMAGE_DIR, LABEL_DIR)
+    if not os.path.exists(args.dataset_dir):
+        print(f"❌ 错误: 数据集目录不存在: {args.dataset_dir}")
+        return
     
-    # 可视化
-    if args.visualize:
-        print(f"\n🖼️  准备显示 {args.samples} 个随机样本的可视化...")
-        try:
-            visualize_yolo_annotations(IMAGE_DIR, LABEL_DIR, args.samples)
-        except Exception as e:
-            print(f"❌ 可视化失败: {e}")
-            print("请确保安装了 matplotlib: pip install matplotlib")
-
-    # 交互式确认
-    if missing or redundant or args.visualize:
-        input("\n按Enter键退出...")
+    analyze_dataset(args.dataset_dir, args.stats)
 
 
 if __name__ == "__main__":

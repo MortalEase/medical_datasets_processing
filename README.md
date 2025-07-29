@@ -1,11 +1,28 @@
 # 脚本命令行用法简明说明
 
 ## yolo_dataset_split.py
-YOLO数据集划分：
+YOLO数据集划分工具（仅支持简单结构）：
 ```bash
+# 基础划分
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录
-# 可选参数：--train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1 --seed 42
+
+# 自定义比例划分
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 \
+                             --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
+
+# 设置随机种子保证可重现
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42
 ```
+
+**输入要求**：
+- 输入数据集必须为简单结构：`dataset/images/ + dataset/labels/`
+- 输出为分层结构：`output/train/, output/val/, output/test/`
+
+**功能特点**：
+- ✅ 确保数据完整性（输入图片数 = 输出图片数）
+- ✅ 支持背景图片（无标签图片）
+- ✅ 详细统计报告和数据验证
+- ✅ 各类别分布统计
 
 ## coco_dataset_split.py
 COCO数据集划分：
@@ -42,19 +59,34 @@ python validate_yolo_dataset.py -d 数据集根目录
 ```
 
 ## yolo_dataset_analyzer.py
-检查图片和标签对应关系 + 可视化功能：
+YOLO数据集分析工具 - 支持多种数据集结构：
 ```bash
-# 基础检查
-python yolo_dataset_analyzer.py -i 图片文件夹路径 -l 标签文件夹路径
+# 分析数据集完整性（检查图片与标签对应关系）
+python yolo_dataset_analyzer.py -d 数据集根目录
 
 # 显示详细统计信息
-python yolo_dataset_analyzer.py -i 图片文件夹路径 -l 标签文件夹路径 --stats
+python yolo_dataset_analyzer.py -d 数据集根目录 --stats
+```
 
-# 可视化图片和检测框（过滤背景图）
-python yolo_dataset_analyzer.py -i 图片文件夹路径 -l 标签文件夹路径 --visualize --samples 9
+**支持的数据集结构**：
+- **简单结构**: `dataset/images/ + dataset/labels/`
+- **分层结构**: `dataset/train/images/ + dataset/train/labels/` 等
+- **混合结构**: 自动检测并支持包含`data.yaml`的数据集
 
-# 完整分析（统计+可视化）
-python yolo_dataset_analyzer.py -i 图片文件夹路径 -l 标签文件夹路径 --stats --visualize
+**功能特点**：
+- 🔍 自动检测数据集结构类型
+- 📊 统计图片与标签对应关系
+- 📈 分析各类别标注框分布
+- 📋 支持从`classes.txt`或`data.yaml`加载类别名称
+- ⚠️ 识别缺失标注和冗余标注文件
+
+**使用示例**：
+```bash
+# 分析分层结构数据集
+python yolo_dataset_analyzer.py -d "/path/to/hierarchical/dataset" --stats
+
+# 快速检查数据集完整性
+python yolo_dataset_analyzer.py -d "./my_dataset"
 ```
 
 ## yolo2coco.py
@@ -121,29 +153,6 @@ python yolo_dataset_viewer.py -d 数据集根目录 --batch --filter-classes per
 - `C`: 重置数据集状态
 - `Q` 或 `ESC`: 退出程序
 
-**支持的数据集结构**：
-```
-# 结构1: 简单结构
-dataset/
-├── images/
-├── labels/
-└── classes.txt
-
-# 结构2: 分层结构（推荐）
-dataset/
-├── train/images + train/labels
-├── val/images + val/labels
-├── test/images + test/labels
-├── classes.txt
-└── data.yaml
-
-# 结构3: 混合结构
-dataset/
-├── images/
-├── labels/
-└── data.yaml
-```
-
 **使用示例**：
 ```bash
 # 查看医疗数据集
@@ -190,4 +199,18 @@ python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO \
   - 值越大，过滤掉的小目标越多，但可能丢失真实骨折
 
 ---
+
+## 工具说明
+
+### 多格式支持
+- **yolo_dataset_analyzer.py**: 支持所有三种YOLO数据集结构
+- **yolo_dataset_split.py**: 仅支持简单结构输入，输出分层结构
+- **其他工具**: 大部分支持简单结构，部分支持分层结构
+
+### 推荐工作流程
+1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集
+2. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
+3. 使用 `validate_yolo_dataset.py` 验证划分结果
+4. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
+
 使用 `-h` 或 `--help` 查看详细参数说明。
