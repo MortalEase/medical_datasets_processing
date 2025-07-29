@@ -86,6 +86,76 @@ python universal_label_cleaner.py 数据集根目录 --quiet
 python universal_label_cleaner.py 数据集根目录 --class-file custom_classes.txt
 ```
 
+## yolo_dataset_viewer.py
+YOLO数据集交互式遍历查看器：
+```bash
+# 交互式查看模式
+python yolo_dataset_viewer.py -d 数据集根目录
+
+# 指定类别文件
+python yolo_dataset_viewer.py -d 数据集根目录 -c classes.txt
+
+# 交互式查看特定类别的图片
+python yolo_dataset_viewer.py -d 数据集根目录 --filter-classes 0,1,2
+python yolo_dataset_viewer.py -d 数据集根目录 --filter-classes person,car,bicycle
+
+# 批量查看模式（一次显示多张图片）
+python yolo_dataset_viewer.py -d 数据集根目录 --batch -n 12
+
+# 批量查看特定类别的图片
+python yolo_dataset_viewer.py -d 数据集根目录 --batch --filter-classes 0,1,2
+python yolo_dataset_viewer.py -d 数据集根目录 --batch --filter-classes person,car,bicycle
+```
+
+**交互式模式功能**：
+- 🖼️ **图片浏览**: 上一张/下一张切换图片
+- � **随机查看**: 随机显示任意一张图片
+- 📊 **统计分析**: 显示当前数据集的类别分布统计
+- 🔄 **数据重置**: 重新扫描数据集，重置所有状态
+- � **程序退出**: 安全退出查看器
+
+**快捷键说明**：
+- `← →` 或 `A D`: 切换图片（上一张/下一张）
+- `R`: 随机显示图片
+- `T`: 显示统计信息
+- `C`: 重置数据集状态
+- `Q` 或 `ESC`: 退出程序
+
+**支持的数据集结构**：
+```
+# 结构1: 简单结构
+dataset/
+├── images/
+├── labels/
+└── classes.txt
+
+# 结构2: 分层结构（推荐）
+dataset/
+├── train/images + train/labels
+├── val/images + val/labels
+├── test/images + test/labels
+├── classes.txt
+└── data.yaml
+
+# 结构3: 混合结构
+dataset/
+├── images/
+├── labels/
+└── data.yaml
+```
+
+**使用示例**：
+```bash
+# 查看医疗数据集
+python yolo_dataset_viewer.py -d "D:\datasets\medical_yolo"
+
+# 查看自定义数据集
+python yolo_dataset_viewer.py -d "/path/to/yolo/dataset" -c custom_classes.txt
+
+# 按类别筛选查看（窗口标题会显示筛选状态）
+python yolo_dataset_viewer.py -d "D:\datasets\gugutoudata" --filter-classes 0
+```
+
 ## clean_gynecology_dataset.py
 gynecology-mri数据集专用清理工具：
 ```bash
