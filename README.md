@@ -48,45 +48,38 @@ python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 
 - ✅ 详细统计报告和数据验证
 - ✅ 各类别分布统计
 
-## validate_yolo_dataset.py
-统计YOLO数据集各集合标签分布
-
-**支持的数据集格式**：
-- ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等
-- ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等
-
-```bash
-python validate_yolo_dataset.py -d 数据集根目录
-# 统计YOLO格式数据集中各个集合的标签分布情况
-```
-
 ## yolo_dataset_analyzer.py
 YOLO数据集分析工具 - 支持多种数据集结构
 
 **支持的数据集格式**：
-- ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等
-- ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等
-- ✅ 混合结构：自动检测并支持包含`data.yaml`的数据集
+- ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等 (按数据集划分分组)
+- ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等 (按文件类型分组)
+- ✅ 简单结构：`dataset/images/ + dataset/labels/` (单一数据集)
+- ✅ 自动检测：支持包含`data.yaml`的数据集
 
 ```bash
 # 分析数据集完整性（检查图片与标签对应关系）
 python yolo_dataset_analyzer.py -d 数据集根目录
 
-# 显示详细统计信息
+# 显示详细统计信息（包含表格形式的类别分布）
 python yolo_dataset_analyzer.py -d 数据集根目录 --stats
 ```
 
 **功能特点**：
-- 🔍 自动检测数据集结构类型
+- 🔍 自动检测数据集结构类型 (格式一/格式二/简单结构)
 - 📊 统计图片与标签对应关系
-- 📈 分析各类别标注框分布
+- 📈 表格形式展示各类别在 train/val/test 中的分布
 - 📋 支持从`classes.txt`或`data.yaml`加载类别名称
 - ⚠️ 识别缺失标注和冗余标注文件
+- 📑 紧凑表格输出，减少屏幕滚动
 
 **使用示例**：
 ```bash
-# 分析分层结构数据集
-python yolo_dataset_analyzer.py -d "/path/to/hierarchical/dataset" --stats
+# 分析格式一数据集 (train/val/test 为顶级目录)
+python yolo_dataset_analyzer.py -d "/path/to/format1/dataset" --stats
+
+# 分析格式二数据集 (images/labels 为顶级目录)
+python yolo_dataset_analyzer.py -d "/path/to/format2/dataset" --stats
 
 # 快速检查数据集完整性
 python yolo_dataset_analyzer.py -d "./my_dataset"
@@ -211,14 +204,6 @@ python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split \
 python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split --seed 42
 ```
 
-## validate_coco_dataset.py
-验证COCO格式数据集
-
-```bash
-python validate_coco_dataset.py -d 数据集根目录
-# 验证COCO格式数据集的标注文件与图像文件对应关系
-```
-
 ## ribfrac_to_coco.py
 RibFrac 3D CT转COCO格式目标检测
 
@@ -265,7 +250,6 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 ### YOLO数据集格式支持情况
 - **yolo_dataset_analyzer.py**: 支持格式一、格式二及混合结构
 - **yolo_dataset_split.py**: 输入简单结构(images/+labels/)，可输出格式一或格式二
-- **validate_yolo_dataset.py**: 支持格式一、格式二
 - **yolo_label_cleaner.py**: 支持格式一、格式二
 - **yolo_dataset_viewer.py**: 支持格式一、格式二
 - **yolo2coco.py**: 支持格式一、格式二
@@ -273,7 +257,7 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 ### 推荐工作流程
 1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集
 2. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
-3. 使用 `validate_yolo_dataset.py` 验证划分结果
+3. 使用 `yolo_dataset_analyzer.py` 验证划分结果（使用--stats参数）
 4. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
 
 使用 `-h` 或 `--help` 查看详细参数说明

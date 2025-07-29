@@ -10,4 +10,4 @@ scikit-image
 openpyxl
 matplotlib
 PyYAML
-
+prettytable

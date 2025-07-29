@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import yaml
 import random
+from prettytable import PrettyTable
 
 
 def get_image_extensions():
@@ -70,10 +71,7 @@ def load_class_names(dataset_dir):
 
 def detect_dataset_structure(dataset_dir):
     """检测数据集结构类型"""
-    images_dir = os.path.join(dataset_dir, 'images')
-    labels_dir = os.path.join(dataset_dir, 'labels')
-    
-    # 检查是否有train/val/test分层结构
+    # 检查格式一：dataset/train/images/ + dataset/train/labels/ 等
     train_images = os.path.join(dataset_dir, 'train', 'images')
     train_labels = os.path.join(dataset_dir, 'train', 'labels')
     val_images = os.path.join(dataset_dir, 'val', 'images')
@@ -84,11 +82,28 @@ def detect_dataset_structure(dataset_dir):
     if (os.path.exists(train_images) and os.path.exists(train_labels)) or \
        (os.path.exists(val_images) and os.path.exists(val_labels)) or \
        (os.path.exists(test_images) and os.path.exists(test_labels)):
-        return 'hierarchical'  # 分层结构
-    elif os.path.exists(images_dir) and os.path.exists(labels_dir):
+        return 'format1'  # 格式一
+    
+    # 检查格式二：dataset/images/train/ + dataset/labels/train/ 等
+    images_train = os.path.join(dataset_dir, 'images', 'train')
+    labels_train = os.path.join(dataset_dir, 'labels', 'train')
+    images_val = os.path.join(dataset_dir, 'images', 'val')
+    labels_val = os.path.join(dataset_dir, 'labels', 'val')
+    images_test = os.path.join(dataset_dir, 'images', 'test')
+    labels_test = os.path.join(dataset_dir, 'labels', 'test')
+    
+    if (os.path.exists(images_train) and os.path.exists(labels_train)) or \
+       (os.path.exists(images_val) and os.path.exists(labels_val)) or \
+       (os.path.exists(images_test) and os.path.exists(labels_test)):
+        return 'format2'  # 格式二
+    
+    # 检查简单结构：dataset/images/ + dataset/labels/
+    images_dir = os.path.join(dataset_dir, 'images')
+    labels_dir = os.path.join(dataset_dir, 'labels')
+    if os.path.exists(images_dir) and os.path.exists(labels_dir):
         return 'simple'  # 简单结构
-    else:
-        return 'unknown'
+    
+    return 'unknown'
 
 
 def get_dataset_paths(dataset_dir):
@@ -96,15 +111,22 @@ def get_dataset_paths(dataset_dir):
     structure = detect_dataset_structure(dataset_dir)
     paths = []
     
-    if structure == 'hierarchical':
-        # 分层结构
+    if structure == 'format1':
+        # 格式一：dataset/train/images/ + dataset/train/labels/ 等
         for split in ['train', 'val', 'test']:
             images_dir = os.path.join(dataset_dir, split, 'images')
             labels_dir = os.path.join(dataset_dir, split, 'labels')
             if os.path.exists(images_dir) and os.path.exists(labels_dir):
                 paths.append((split, images_dir, labels_dir))
+    elif structure == 'format2':
+        # 格式二：dataset/images/train/ + dataset/labels/train/ 等
+        for split in ['train', 'val', 'test']:
+            images_dir = os.path.join(dataset_dir, 'images', split)
+            labels_dir = os.path.join(dataset_dir, 'labels', split)
+            if os.path.exists(images_dir) and os.path.exists(labels_dir):
+                paths.append((split, images_dir, labels_dir))
     elif structure == 'simple':
-        # 简单结构
+        # 简单结构：dataset/images/ + dataset/labels/
         images_dir = os.path.join(dataset_dir, 'images')
         labels_dir = os.path.join(dataset_dir, 'labels')
         paths.append(('dataset', images_dir, labels_dir))
@@ -198,29 +220,112 @@ def analyze_annotation_statistics(img_dir, label_dir, split_name="", class_names
                 
                 box_counts_per_image.append(boxes_in_image)
     
-    # 生成统计报告
-    prefix = f"{split_name} " if split_name else ""
-    print(f"\n{'='*30} {prefix}标注统计分析 {'='*30}")
-    print(f"📊 图片总数: {total_images}")
-    print(f"📊 有标注图片数: {labeled_images}")
-    print(f"📊 背景图片数: {total_images - labeled_images}")
-    print(f"📊 标注框总数: {total_boxes}")
-    if labeled_images > 0:
-        print(f"📊 平均每张有标注图片的标注框数: {total_boxes/labeled_images:.2f}")
-    
-    if box_counts_per_image:
-        print(f"📊 单张图片最多标注框数: {max(box_counts_per_image)}")
-        print(f"📊 单张图片最少标注框数: {min(box_counts_per_image)}")
-    
-    if class_counts:
-        print(f"\n📈 各类别标注框分布:")
-        for class_id in sorted(class_counts.keys()):
-            count = class_counts[class_id]
-            percentage = (count / total_boxes) * 100 if total_boxes > 0 else 0
-            class_name = class_names.get(class_id, f"Class_{class_id}") if class_names else f"Class_{class_id}"
-            print(f"   类别 {class_id} ({class_name}): {count} 个 ({percentage:.1f}%)")
-    
     return total_images, labeled_images, total_boxes, class_counts
+
+
+def create_basic_stats_table(all_stats):
+    """创建基本统计信息表格"""
+    table = PrettyTable()
+    table.field_names = ["数据集", "总图片数", "有标注图片数", "背景图片数", "标注框总数", "平均框数/图"]
+    
+    total_images = 0
+    total_labeled = 0
+    total_boxes = 0
+    
+    for split_name, stats in all_stats.items():
+        imgs, labeled, boxes, _ = stats
+        background = imgs - labeled
+        avg_boxes = boxes / labeled if labeled > 0 else 0
+        
+        table.add_row([
+            split_name,
+            imgs,
+            labeled,
+            background,
+            boxes,
+            f"{avg_boxes:.2f}"
+        ])
+        
+        total_images += imgs
+        total_labeled += labeled
+        total_boxes += boxes
+    
+    # 添加总计行
+    total_background = total_images - total_labeled
+    total_avg_boxes = total_boxes / total_labeled if total_labeled > 0 else 0
+    table.add_row([
+        "总计",
+        total_images,
+        total_labeled,
+        total_background,
+        total_boxes,
+        f"{total_avg_boxes:.2f}"
+    ])
+    
+    print(f"\n📊 数据集基本统计信息:")
+    print(table)
+
+
+def create_class_distribution_table(all_stats, class_names):
+    """创建类别分布表格"""
+    # 收集所有类别ID
+    all_class_ids = set()
+    for stats in all_stats.values():
+        all_class_ids.update(stats[3].keys())
+    
+    if not all_class_ids:
+        print("\n⚠️  没有找到任何类别标注")
+        return
+    
+    all_class_ids = sorted(all_class_ids)
+    
+    # 计算总体统计
+    split_totals = {}
+    grand_total = 0
+    for split_name, stats in all_stats.items():
+        split_total = sum(stats[3].values())
+        split_totals[split_name] = split_total
+        grand_total += split_total
+    
+    # 创建表格
+    table = PrettyTable()
+    header = ["类别ID", "类别名称"]
+    
+    # 为每个数据集分割添加列
+    for split_name in all_stats.keys():
+        header.append(f"{split_name}(数量(百分比))")
+    
+    header.append("总数(百分比)")
+    table.field_names = header
+    
+    # 添加每个类别的数据
+    for class_id in all_class_ids:
+        class_name = class_names.get(class_id, f"Class_{class_id}") if class_names else f"Class_{class_id}"
+        row = [class_id, class_name]
+        
+        class_total = 0
+        for split_name, stats in all_stats.items():
+            count = stats[3].get(class_id, 0)
+            percentage = (count / split_totals[split_name]) * 100 if split_totals[split_name] > 0 else 0
+            row.append(f"{count}({percentage:.1f}%)")
+            class_total += count
+        
+        # 总计列
+        total_percentage = (class_total / grand_total) * 100 if grand_total > 0 else 0
+        row.append(f"{class_total}({total_percentage:.1f}%)")
+        
+        table.add_row(row)
+    
+    # 添加总计行
+    total_row = ["", "总计"]
+    for split_name in all_stats.keys():
+        total_count = split_totals[split_name]
+        total_row.append(f"{total_count}(100.0%)")
+    total_row.append(f"{grand_total}(100.0%)")
+    table.add_row(total_row)
+    
+    print(f"\n📈 类别分布统计表:")
+    print(table)
 
 
 def analyze_dataset(dataset_dir, show_stats=False):
@@ -233,28 +338,38 @@ def analyze_dataset(dataset_dir, show_stats=False):
     if not paths:
         print("❌ 错误: 未找到有效的YOLO数据集结构")
         print("支持的结构:")
-        print("  1. 简单结构: dataset/images/ + dataset/labels/")
-        print("  2. 分层结构: dataset/train/images/ + dataset/train/labels/ 等")
+        print("  1. 格式一: dataset/train/images/ + dataset/train/labels/ 等")
+        print("  2. 格式二: dataset/images/train/ + dataset/labels/train/ 等")
+        print("  3. 简单结构: dataset/images/ + dataset/labels/")
         return
     
     # 加载类别名称
     class_names = load_class_names(dataset_dir)
     
-    print(f"📁 检测到数据集结构: {'分层结构' if structure == 'hierarchical' else '简单结构'}")
+    # 输出结构类型信息
+    structure_name = {
+        'format1': '格式一 (按数据集划分分组)',
+        'format2': '格式二 (按文件类型分组)',
+        'simple': '简单结构',
+        'unknown': '未知格式'
+    }.get(structure, '未知格式')
+    
+    print(f"📁 检测到数据集结构: {structure_name}")
     if class_names:
         print(f"📋 加载了 {len(class_names)} 个类别名称")
     else:
         print("⚠️  未找到类别名称文件 (classes.txt 或 data.yaml)")
     
-    # 分析每个数据集分割
+    # 分析每个数据集分割（收集统计信息但不显示检查报告）
     total_missing = 0
     total_redundant = 0
     all_stats = {}
+    missing_reports = []
     
     for split_name, img_dir, label_dir in paths:
         # 检查对应关系
         missing, redundant = check_yolo_dataset(img_dir, label_dir)
-        generate_report(split_name, missing, redundant)
+        missing_reports.append((split_name, missing, redundant))
         
         total_missing += len(missing)
         total_redundant += len(redundant)
@@ -264,34 +379,22 @@ def analyze_dataset(dataset_dir, show_stats=False):
             stats = analyze_annotation_statistics(img_dir, label_dir, split_name, class_names)
             all_stats[split_name] = stats
     
-    # 总体摘要
+    # 输出顺序：1. 类别分布统计表（如果有统计）
+    if show_stats and all_stats:
+        create_class_distribution_table(all_stats, class_names)
+        
+        # 2. 数据集基本统计信息
+        create_basic_stats_table(all_stats)
+    
+    # 3. 总体摘要
     print(f"\n{'='*30} 总体摘要 {'='*30}")
     print(f"📊 数据集分割数: {len(paths)}")
     print(f"⚠️  总缺失标注: {total_missing}")
     print(f"⚠️  总冗余标注: {total_redundant}")
     
-    if show_stats and all_stats:
-        total_images = sum(stats[0] for stats in all_stats.values())
-        total_labeled = sum(stats[1] for stats in all_stats.values())
-        total_boxes = sum(stats[2] for stats in all_stats.values())
-        
-        print(f"📊 总图片数: {total_images}")
-        print(f"📊 总有标注图片数: {total_labeled}")
-        print(f"📊 总标注框数: {total_boxes}")
-        
-        # 合并类别统计
-        combined_classes = {}
-        for stats in all_stats.values():
-            for class_id, count in stats[3].items():
-                combined_classes[class_id] = combined_classes.get(class_id, 0) + count
-        
-        if combined_classes:
-            print(f"\n📈 整体类别分布:")
-            for class_id in sorted(combined_classes.keys()):
-                count = combined_classes[class_id]
-                percentage = (count / total_boxes) * 100 if total_boxes > 0 else 0
-                class_name = class_names.get(class_id, f"Class_{class_id}") if class_names else f"Class_{class_id}"
-                print(f"   类别 {class_id} ({class_name}): {count} 个 ({percentage:.1f}%)")
+    # 4. 检查报告（最后显示）
+    for split_name, missing, redundant in missing_reports:
+        generate_report(split_name, missing, redundant)
 
 
 def main():
