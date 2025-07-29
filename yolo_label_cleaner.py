@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-通用YOLO数据集标签清理工具
+YOLO数据集标签清理工具
+支持格式一和格式二的YOLO数据集结构
 支持多种清理策略，让用户灵活决定清理范围
 
 作者: AI Assistant
-日期: 2025年6月6日
+日期: 2025年7月29日
 """
 
 import os
@@ -36,13 +37,57 @@ class YOLODatasetCleaner:
         self.dataset_path = Path(dataset_path)
         self.backup = backup
         self.verbose = verbose
-        self.splits = ['train', 'valid', 'test']
+        self.splits = ['train', 'val', 'test']  # 支持的数据集划分
         self.img_exts = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
         
         # 统计信息
         self.class_counts = defaultdict(int)
         self.total_annotations = 0
         self.total_images = 0
+        
+        # 检测数据集格式
+        self.dataset_format = self.detect_dataset_format()
+    
+    def detect_dataset_format(self):
+        """
+        检测YOLO数据集格式
+        返回: 1 为格式一, 2 为格式二
+        """
+        # 检查格式一: dataset/train/images/, dataset/train/labels/
+        format1_exists = any((self.dataset_path / split / 'images').exists() and 
+                           (self.dataset_path / split / 'labels').exists() 
+                           for split in self.splits)
+        
+        # 检查格式二: dataset/images/train/, dataset/labels/train/
+        format2_exists = ((self.dataset_path / 'images').exists() and 
+                         (self.dataset_path / 'labels').exists() and
+                         any((self.dataset_path / 'images' / split).exists() for split in self.splits))
+        
+        if format1_exists and not format2_exists:
+            self.log("🔍 检测到格式一: train/images/, train/labels/")
+            return 1
+        elif format2_exists and not format1_exists:
+            self.log("🔍 检测到格式二: images/train/, labels/train/")
+            return 2
+        elif format1_exists and format2_exists:
+            self.log("⚠️  检测到混合格式，优先使用格式一")
+            return 1
+        else:
+            self.log("❌ 未检测到有效的YOLO数据集格式")
+            return None
+    
+    def get_split_paths(self, split):
+        """根据数据集格式获取分割的路径"""
+        if self.dataset_format == 1:
+            # 格式一: dataset/train/images/, dataset/train/labels/
+            images_dir = self.dataset_path / split / 'images'
+            labels_dir = self.dataset_path / split / 'labels'
+        else:
+            # 格式二: dataset/images/train/, dataset/labels/train/
+            images_dir = self.dataset_path / 'images' / split
+            labels_dir = self.dataset_path / 'labels' / split
+        
+        return images_dir, labels_dir
         
     def log(self, message):
         """输出日志信息"""
@@ -77,11 +122,14 @@ class YOLODatasetCleaner:
         """分析数据集的类别分布"""
         self.log("🔍 分析数据集...")
         
+        if self.dataset_format is None:
+            self.log("❌ 无法分析数据集：未检测到有效格式")
+            return {}
+        
         split_stats = {}
         
         for split in self.splits:
-            labels_dir = self.dataset_path / split / 'labels'
-            images_dir = self.dataset_path / split / 'images'
+            images_dir, labels_dir = self.get_split_paths(split)
             
             if not labels_dir.exists():
                 self.log(f"⚠️  跳过不存在的目录: {labels_dir}")
@@ -412,8 +460,7 @@ class YOLODatasetCleaner:
         updated_files = []
         
         for split in self.splits:
-            labels_dir = self.dataset_path / split / 'labels'
-            images_dir = self.dataset_path / split / 'images'
+            images_dir, labels_dir = self.get_split_paths(split)
             
             if not labels_dir.exists():
                 continue
@@ -552,7 +599,7 @@ class YOLODatasetCleaner:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="通用YOLO数据集标签清理工具")
+    parser = argparse.ArgumentParser(description="YOLO数据集标签清理工具")
     parser.add_argument('dataset_path', help='数据集根目录路径')
     parser.add_argument('--no-backup', action='store_true', help='不创建备份')
     parser.add_argument('--quiet', '-q', action='store_true', help='静默模式')

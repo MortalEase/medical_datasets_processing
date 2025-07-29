@@ -92,8 +92,8 @@ python yolo_dataset_analyzer.py -d "/path/to/hierarchical/dataset" --stats
 python yolo_dataset_analyzer.py -d "./my_dataset"
 ```
 
-## universal_label_cleaner.py
-通用YOLO数据集标签清理工具
+## yolo_label_cleaner.py
+YOLO数据集标签清理工具
 
 **支持的数据集格式**：
 - ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等
@@ -101,22 +101,22 @@ python yolo_dataset_analyzer.py -d "./my_dataset"
 
 ```bash
 # 交互式清理（推荐）
-python universal_label_cleaner.py 数据集根目录
+python yolo_label_cleaner.py 数据集根目录
 
 # 自动清理 - 删除少于50个样本的类别
-python universal_label_cleaner.py 数据集根目录 --auto-clean min_samples:50
+python yolo_label_cleaner.py 数据集根目录 --auto-clean min_samples:50
 
 # 自动清理 - 删除少于2%的类别
-python universal_label_cleaner.py 数据集根目录 --auto-clean min_percentage:2.0
+python yolo_label_cleaner.py 数据集根目录 --auto-clean min_percentage:2.0
 
 # 不创建备份
-python universal_label_cleaner.py 数据集根目录 --no-backup
+python yolo_label_cleaner.py 数据集根目录 --no-backup
 
 # 静默模式
-python universal_label_cleaner.py 数据集根目录 --quiet
+python yolo_label_cleaner.py 数据集根目录 --quiet
 
 # 指定类别文件
-python universal_label_cleaner.py 数据集根目录 --class-file custom_classes.txt
+python yolo_label_cleaner.py 数据集根目录 --class-file custom_classes.txt
 ```
 
 ## yolo_dataset_viewer.py
@@ -259,3 +259,21 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 ```
 
 ---
+
+## 工具说明
+
+### YOLO数据集格式支持情况
+- **yolo_dataset_analyzer.py**: 支持格式一、格式二及混合结构
+- **yolo_dataset_split.py**: 输入简单结构(images/+labels/)，可输出格式一或格式二
+- **validate_yolo_dataset.py**: 支持格式一、格式二
+- **yolo_label_cleaner.py**: 支持格式一、格式二
+- **yolo_dataset_viewer.py**: 支持格式一、格式二
+- **yolo2coco.py**: 支持格式一、格式二
+
+### 推荐工作流程
+1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集
+2. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
+3. 使用 `validate_yolo_dataset.py` 验证划分结果
+4. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
+
+使用 `-h` 或 `--help` 查看详细参数说明
