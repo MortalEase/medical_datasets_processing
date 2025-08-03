@@ -103,6 +103,26 @@ def detect_dataset_structure(dataset_dir):
     if os.path.exists(images_dir) and os.path.exists(labels_dir):
         return 'simple'  # 简单结构
     
+    # 检查混合结构：所有图片和txt文件在同一个文件夹中
+    img_exts = get_image_extensions()
+    txt_files = []
+    img_files = []
+    
+    try:
+        for file in os.listdir(dataset_dir):
+            file_path = os.path.join(dataset_dir, file)
+            if os.path.isfile(file_path):
+                if Path(file).suffix.lower() in img_exts:
+                    img_files.append(file)
+                elif Path(file).suffix.lower() == '.txt' and file not in ['classes.txt', 'obj.names', 'names.txt']:
+                    txt_files.append(file)
+        
+        # 如果存在图片文件和txt文件，则认为是混合结构
+        if img_files and txt_files:
+            return 'mixed'  # 混合结构
+    except:
+        pass
+    
     return 'unknown'
 
 
@@ -130,6 +150,9 @@ def get_dataset_paths(dataset_dir):
         images_dir = os.path.join(dataset_dir, 'images')
         labels_dir = os.path.join(dataset_dir, 'labels')
         paths.append(('dataset', images_dir, labels_dir))
+    elif structure == 'mixed':
+        # 混合结构：所有图片和txt文件在同一个文件夹中
+        paths.append(('dataset', dataset_dir, dataset_dir))
     
     return structure, paths
 
@@ -141,12 +164,30 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=None):
     if img_exts is None:
         img_exts = get_image_extensions()
     
-    # 获取文件名集合（不含扩展名）
-    img_stems = {Path(f).stem for f in os.listdir(img_dir)
-                 if Path(f).suffix.lower() in img_exts}
+    # 处理混合结构（图片和标签在同一目录）
+    if img_dir == label_dir:
+        all_files = os.listdir(img_dir)
+        
+        # 获取图片文件名集合（不含扩展名）
+        img_stems = set()
+        for f in all_files:
+            if Path(f).suffix.lower() in img_exts:
+                img_stems.add(Path(f).stem)
+        
+        # 获取标签文件名集合（不含扩展名），排除类别文件
+        label_stems = set()
+        for f in all_files:
+            if (Path(f).suffix.lower() == '.txt' and 
+                f not in ['classes.txt', 'obj.names', 'names.txt', 'data.yaml', 'data.yml']):
+                label_stems.add(Path(f).stem)
+    else:
+        # 处理分离结构（图片和标签在不同目录）
+        # 获取文件名集合（不含扩展名）
+        img_stems = {Path(f).stem for f in os.listdir(img_dir)
+                     if Path(f).suffix.lower() in img_exts}
 
-    label_stems = {Path(f).stem for f in os.listdir(label_dir)
-                   if Path(f).suffix.lower() == '.txt'}
+        label_stems = {Path(f).stem for f in os.listdir(label_dir)
+                       if Path(f).suffix.lower() == '.txt'}
 
     # 计算差异集合
     missing_labels = img_stems - label_stems
@@ -197,28 +238,58 @@ def analyze_annotation_statistics(img_dir, label_dir, split_name="", class_names
     class_counts = {}
     box_counts_per_image = []
     
-    for f in os.listdir(img_dir):
-        if Path(f).suffix.lower() in img_exts:
-            total_images += 1
-            label_path = Path(label_dir) / (Path(f).stem + '.txt')
-            
-            if label_path.exists():
-                labeled_images += 1
-                boxes_in_image = 0
+    # 处理混合结构（图片和标签在同一目录）
+    if img_dir == label_dir:
+        all_files = os.listdir(img_dir)
+        
+        for f in all_files:
+            if Path(f).suffix.lower() in img_exts:
+                total_images += 1
+                label_path = Path(img_dir) / (Path(f).stem + '.txt')
                 
-                try:
-                    with open(label_path, 'r') as file:
-                        for line in file:
-                            parts = line.strip().split()
-                            if len(parts) >= 5:
-                                class_id = int(float(parts[0]))
-                                boxes_in_image += 1
-                                total_boxes += 1
-                                class_counts[class_id] = class_counts.get(class_id, 0) + 1
-                except:
-                    continue
+                # 确保不是类别文件
+                if (label_path.exists() and 
+                    label_path.name not in ['classes.txt', 'obj.names', 'names.txt']):
+                    labeled_images += 1
+                    boxes_in_image = 0
+                    
+                    try:
+                        with open(label_path, 'r') as file:
+                            for line in file:
+                                parts = line.strip().split()
+                                if len(parts) >= 5:
+                                    class_id = int(float(parts[0]))
+                                    boxes_in_image += 1
+                                    total_boxes += 1
+                                    class_counts[class_id] = class_counts.get(class_id, 0) + 1
+                    except:
+                        continue
+                    
+                    box_counts_per_image.append(boxes_in_image)
+    else:
+        # 处理分离结构（图片和标签在不同目录）
+        for f in os.listdir(img_dir):
+            if Path(f).suffix.lower() in img_exts:
+                total_images += 1
+                label_path = Path(label_dir) / (Path(f).stem + '.txt')
                 
-                box_counts_per_image.append(boxes_in_image)
+                if label_path.exists():
+                    labeled_images += 1
+                    boxes_in_image = 0
+                    
+                    try:
+                        with open(label_path, 'r') as file:
+                            for line in file:
+                                parts = line.strip().split()
+                                if len(parts) >= 5:
+                                    class_id = int(float(parts[0]))
+                                    boxes_in_image += 1
+                                    total_boxes += 1
+                                    class_counts[class_id] = class_counts.get(class_id, 0) + 1
+                    except:
+                        continue
+                    
+                    box_counts_per_image.append(boxes_in_image)
     
     return total_images, labeled_images, total_boxes, class_counts
 
@@ -341,6 +412,7 @@ def analyze_dataset(dataset_dir, show_stats=False):
         print("  1. 格式一: dataset/train/images/ + dataset/train/labels/ 等")
         print("  2. 格式二: dataset/images/train/ + dataset/labels/train/ 等")
         print("  3. 简单结构: dataset/images/ + dataset/labels/")
+        print("  4. 混合结构: 图片和txt标签文件在同一个文件夹中")
         return
     
     # 加载类别名称
@@ -351,6 +423,7 @@ def analyze_dataset(dataset_dir, show_stats=False):
         'format1': '格式一 (按数据集划分分组)',
         'format2': '格式二 (按文件类型分组)',
         'simple': '简单结构',
+        'mixed': '混合结构 (图片和标签在同一文件夹)',
         'unknown': '未知格式'
     }.get(structure, '未知格式')
     

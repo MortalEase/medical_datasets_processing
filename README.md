@@ -55,6 +55,7 @@ YOLO数据集分析工具 - 支持多种数据集结构
 - ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等 (按数据集划分分组)
 - ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等 (按文件类型分组)
 - ✅ 简单结构：`dataset/images/ + dataset/labels/` (单一数据集)
+- ✅ 混合结构：图片和txt标签文件在同一个文件夹中
 - ✅ 自动检测：支持包含`data.yaml`的数据集
 
 ```bash
@@ -66,7 +67,7 @@ python yolo_dataset_analyzer.py -d 数据集根目录 --stats
 ```
 
 **功能特点**：
-- 🔍 自动检测数据集结构类型 (格式一/格式二/简单结构)
+- 🔍 自动检测数据集结构类型 (格式一/格式二/简单结构/混合结构)
 - 📊 统计图片与标签对应关系
 - 📈 表格形式展示各类别在 train/val/test 中的分布
 - 📋 支持从`classes.txt`或`data.yaml`加载类别名称
@@ -80,6 +81,9 @@ python yolo_dataset_analyzer.py -d "/path/to/format1/dataset" --stats
 
 # 分析格式二数据集 (images/labels 为顶级目录)
 python yolo_dataset_analyzer.py -d "/path/to/format2/dataset" --stats
+
+# 分析混合结构数据集 (图片和txt文件在同一文件夹)
+python yolo_dataset_analyzer.py -d "/path/to/mixed/dataset" --stats
 
 # 快速检查数据集完整性
 python yolo_dataset_analyzer.py -d "./my_dataset"
