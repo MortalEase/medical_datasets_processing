@@ -25,22 +25,23 @@ YOLO数据集划分工具
 - ✅ 格式二：`output/images/train/, output/labels/train/` 等
 
 ```bash
-# 基础划分 (默认输出格式一)
+# 基础划分 (默认输出格式一，3个集合)
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录
 
 # 划分混合结构数据集 (图片和txt文件在同一文件夹)
 python yolo_dataset_split.py -i 混合结构数据集目录 -o 输出目录
 
-# 指定输出格式一
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --output_format 1
+# 只划分为2个集合 (train/val，不要test)
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --no-test --train_ratio 0.8 --val_ratio 0.2
 
-# 指定输出格式二
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --output_format 2
-
-# 自定义比例划分
+# 3个集合自定义比例划分
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 \
                              --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1 \
                              --output_format 1
+
+# 2个集合划分混合结构数据集
+python yolo_dataset_split.py -i 混合结构数据集目录 -o 输出目录 \
+                             --no-test --train_ratio 0.9 --val_ratio 0.1
 
 # 设置随机种子保证可重现
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 --output_format 2
@@ -51,6 +52,8 @@ python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 
 - ✅ 支持背景图片（无标签图片）
 - ✅ 支持混合结构输入（图片和txt文件在同一文件夹）
 - ✅ 智能过滤类别文件（classes.txt等）
+- ✅ 自动复制类别文件到输出目录
+- ✅ 支持2个集合（train/val）或3个集合（train/val/test）划分
 - ✅ 详细统计报告和数据验证
 - ✅ 各类别分布统计
 

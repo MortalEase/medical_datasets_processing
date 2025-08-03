@@ -32,6 +32,21 @@ def find_corresponding_image(label_file, images_dir, structure='standard'):
     return None
 
 
+def find_class_files(base_dir):
+    """查找类别文件"""
+    class_files = []
+    possible_names = ['classes.txt', 'obj.names', 'names.txt', 'data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml']
+    
+    try:
+        for file in os.listdir(base_dir):
+            if file in possible_names and os.path.isfile(os.path.join(base_dir, file)):
+                class_files.append(file)
+    except:
+        pass
+    
+    return class_files
+
+
 def detect_input_structure(base_dir):
     """检测输入数据集结构类型"""
     # 检查标准结构：dataset/images/ + dataset/labels/
@@ -63,15 +78,16 @@ def detect_input_structure(base_dir):
     return 'unknown', None, None
 
 
-def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
+def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=True):
     """
     按指定比例划分数据集，确保各类别在训练、验证、测试集中尽可能均衡
 
     Args:
         base_dir (str): 数据集的根目录，支持标准结构(images/+labels/)或混合结构(图片和txt在同一文件夹)
         output_dir (str): 输出数据集的根目录
-        split_ratios (dict): 数据集划分比例，例如 {"train": 0.8, "val": 0.1, "test": 0.1}
+        split_ratios (dict): 数据集划分比例，例如 {"train": 0.8, "val": 0.2} 或 {"train": 0.8, "val": 0.1, "test": 0.1}
         output_format (int): 输出格式，1为格式一，2为格式二 (默认: 1)
+        use_test (bool): 是否使用测试集，False时只划分为train/val两个集合 (默认: True)
     """
     # 检测输入结构
     structure, images_dir, labels_dir = detect_input_structure(base_dir)
@@ -89,27 +105,40 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
     }.get(structure, '未知结构')
     
     print(f"📁 检测到输入结构: {structure_name}")
+    
+    # 查找类别文件
+    class_files = find_class_files(base_dir)
+    if class_files:
+        print(f"📋 找到类别文件: {', '.join(class_files)}")
+    
+    # 确定要创建的分割集合
+    splits = ["train", "val"]
+    if use_test:
+        splits.append("test")
+    
+    print(f"📊 划分模式: {len(splits)}个集合 ({', '.join(splits)})")
 
     if output_format == 1:
         # 格式一: yolo/train/images/, yolo/train/labels/, etc.
-        train_dir = os.path.join(output_dir, "train")
-        val_dir = os.path.join(output_dir, "val")
-        test_dir = os.path.join(output_dir, "test")
-        
         # 创建输出目录
-        for split in [train_dir, val_dir, test_dir]:
-            os.makedirs(os.path.join(split, "images"), exist_ok=True)
-            os.makedirs(os.path.join(split, "labels"), exist_ok=True)
+        for split in splits:
+            split_dir = os.path.join(output_dir, split)
+            os.makedirs(os.path.join(split_dir, "images"), exist_ok=True)
+            os.makedirs(os.path.join(split_dir, "labels"), exist_ok=True)
     else:
         # 格式二: yolo_dataset/images/train/, yolo_dataset/labels/train/, etc.
-        train_dir = output_dir
-        val_dir = output_dir
-        test_dir = output_dir
-        
         # 创建输出目录
         for data_type in ["images", "labels"]:
-            for split in ["train", "val", "test"]:
+            for split in splits:
                 os.makedirs(os.path.join(output_dir, data_type, split), exist_ok=True)
+    
+    # 复制类别文件到输出目录根目录
+    for class_file in class_files:
+        src_class_path = os.path.join(base_dir, class_file)
+        dst_class_path = os.path.join(output_dir, class_file)
+        if os.path.exists(src_class_path):
+            shutil.copy(src_class_path, dst_class_path)
+            print(f"✓ 复制类别文件: {class_file}")
 
     # 获取所有标签文件
     if structure == 'mixed':
@@ -155,13 +184,34 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
     
     # 按比例划分
     total_files = len(all_image_files)
-    train_count = int(total_files * split_ratios["train"])
-    val_count = int(total_files * split_ratios["val"])
-    test_count = total_files - train_count - val_count  # 剩余归为测试集
     
-    train_files = all_image_files[:train_count]
-    val_files = all_image_files[train_count:train_count + val_count]
-    test_files = all_image_files[train_count + val_count:]
+    if use_test:
+        # 三个集合：train/val/test
+        train_count = int(total_files * split_ratios["train"])
+        val_count = int(total_files * split_ratios["val"])
+        test_count = total_files - train_count - val_count  # 剩余归为测试集
+        
+        train_files = all_image_files[:train_count]
+        val_files = all_image_files[train_count:train_count + val_count]
+        test_files = all_image_files[train_count + val_count:]
+        
+        split_files = {
+            "train": train_files,
+            "val": val_files,
+            "test": test_files
+        }
+    else:
+        # 两个集合：train/val
+        train_count = int(total_files * split_ratios["train"])
+        val_count = total_files - train_count  # 剩余归为验证集
+        
+        train_files = all_image_files[:train_count]
+        val_files = all_image_files[train_count:]
+        
+        split_files = {
+            "train": train_files,
+            "val": val_files
+        }
 
     # 复制文件到对应目录
     def copy_files(file_list, split):
@@ -193,21 +243,24 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
             if os.path.exists(src_label_path):  # 只复制有标签的图片的标签
                 shutil.copy(src_label_path, dst_label_path)
 
-    copy_files(train_files, "train")
-    copy_files(val_files, "val")
-    copy_files(test_files, "test")
+    # 复制所有分割的文件
+    for split in splits:
+        copy_files(split_files[split], split)
 
     # 统计信息
     total_original = len(all_image_files)
-    total_split = len(train_files) + len(val_files) + len(test_files)
+    total_split = sum(len(split_files[split]) for split in splits)
     
     format_desc = "格式一 (train/images/, train/labels/)" if output_format == 1 else "格式二 (images/train/, labels/train/)"
     print(f"数据集划分完成！输出格式: {format_desc}")
     print(f"原始总图片数: {total_original}")
     print(f"划分后总数: {total_split}")
-    print(f"训练集: {len(train_files)} 张图片 ({len(train_files)/total_original*100:.1f}%)")
-    print(f"验证集: {len(val_files)} 张图片 ({len(val_files)/total_original*100:.1f}%)")
-    print(f"测试集: {len(test_files)} 张图片 ({len(test_files)/total_original*100:.1f}%)")
+    
+    # 显示各集合的统计
+    for split in splits:
+        files_count = len(split_files[split])
+        percentage = files_count / total_original * 100 if total_original > 0 else 0
+        print(f"{split}集: {files_count} 张图片 ({percentage:.1f}%)")
     
     # 验证数据完整性
     if total_original == total_split:
@@ -216,14 +269,10 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
         print(f"✗ 警告: 数据不完整，丢失了 {total_original - total_split} 张图片")
     
     # 统计各集合中有标签的图片数量
-    labeled_in_train = sum(1 for img in train_files if img in image_to_classes)
-    labeled_in_val = sum(1 for img in val_files if img in image_to_classes)
-    labeled_in_test = sum(1 for img in test_files if img in image_to_classes)
-    
     print(f"\n标签图片分布:")
-    print(f"训练集标签图片: {labeled_in_train}")
-    print(f"验证集标签图片: {labeled_in_val}")
-    print(f"测试集标签图片: {labeled_in_test}")
+    for split in splits:
+        labeled_count = sum(1 for img in split_files[split] if img in image_to_classes)
+        print(f"{split}集标签图片: {labeled_count}")
     print(f"总标签图片: {len(image_to_classes)}")
     
     # 统计各类别在不同集合中的分布
@@ -234,11 +283,17 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
             all_classes.update(classes)
         
         for class_id in sorted(all_classes):
-            train_count = sum(1 for img in train_files if img in image_to_classes and class_id in image_to_classes[img])
-            val_count = sum(1 for img in val_files if img in image_to_classes and class_id in image_to_classes[img])
-            test_count = sum(1 for img in test_files if img in image_to_classes and class_id in image_to_classes[img])
+            class_stats = []
+            total_class_count = 0
+            
+            for split in splits:
+                count = sum(1 for img in split_files[split] if img in image_to_classes and class_id in image_to_classes[img])
+                class_stats.append(f"{split}集{count}")
+                total_class_count += count
+            
             total_class = len(class_to_images[class_id])
-            print(f"类别 {class_id}: 训练集{train_count}, 验证集{val_count}, 测试集{test_count}, 总计{total_class}")
+            class_stats.append(f"总计{total_class}")
+            print(f"类别 {class_id}: {', '.join(class_stats)}")
 
 
 def main():
@@ -252,19 +307,38 @@ def main():
     parser.add_argument("--val_ratio", type=float, default=0.1,
                        help="验证集比例 (默认: 0.1)")
     parser.add_argument("--test_ratio", type=float, default=0.1,
-                       help="测试集比例 (默认: 0.1)")
+                       help="测试集比例 (默认: 0.1，当--no-test时此参数被忽略)")
     parser.add_argument("--seed", type=int, default=42,
                        help="随机种子 (默认: 42)")
     parser.add_argument("--output_format", type=int, choices=[1, 2], default=1,
                        help="输出格式: 1=格式一(train/images/), 2=格式二(images/train/) (默认: 1)")
+    parser.add_argument("--no-test", action="store_true",
+                       help="只划分为train/val两个集合，不创建test集合")
     
     args = parser.parse_args()
     
+    use_test = not args.no_test
+    
     # 验证比例总和
-    total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
-    if abs(total_ratio - 1.0) > 1e-6:
-        print(f"错误: 训练、验证、测试集比例总和应为1.0，当前为{total_ratio}")
-        return
+    if use_test:
+        total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
+        if abs(total_ratio - 1.0) > 1e-6:
+            print(f"错误: 训练、验证、测试集比例总和应为1.0，当前为{total_ratio}")
+            return
+        split_ratios = {
+            "train": args.train_ratio,
+            "val": args.val_ratio,
+            "test": args.test_ratio
+        }
+    else:
+        total_ratio = args.train_ratio + args.val_ratio
+        if abs(total_ratio - 1.0) > 1e-6:
+            print(f"错误: 训练、验证集比例总和应为1.0，当前为{total_ratio}")
+            return
+        split_ratios = {
+            "train": args.train_ratio,
+            "val": args.val_ratio
+        }
     
     # 验证输入目录
     if not os.path.exists(args.input_dir):
@@ -284,13 +358,6 @@ def main():
     # 设置随机种子
     random.seed(args.seed)
     
-    # 构建比例字典
-    split_ratios = {
-        "train": args.train_ratio,
-        "val": args.val_ratio,
-        "test": args.test_ratio
-    }
-    
     structure_name = {
         'standard': '标准结构 (images/ + labels/)',
         'mixed': '混合结构 (图片和标签在同一文件夹)'
@@ -301,14 +368,21 @@ def main():
     print(f"输入结构: {structure_name}")
     print(f"输出目录: {args.output_dir}")
     print(f"输出格式: {args.output_format} ({'格式一' if args.output_format == 1 else '格式二'})")
-    print(f"训练集比例: {args.train_ratio}")
-    print(f"验证集比例: {args.val_ratio}")
-    print(f"测试集比例: {args.test_ratio}")
+    print(f"划分模式: {'2个集合 (train/val)' if args.no_test else '3个集合 (train/val/test)'}")
+    
+    if use_test:
+        print(f"训练集比例: {args.train_ratio}")
+        print(f"验证集比例: {args.val_ratio}")
+        print(f"测试集比例: {args.test_ratio}")
+    else:
+        print(f"训练集比例: {args.train_ratio}")
+        print(f"验证集比例: {args.val_ratio}")
+    
     print(f"随机种子: {args.seed}")
     print("-" * 50)
     
     # 执行数据集划分
-    split_dataset(args.input_dir, args.output_dir, split_ratios, args.output_format)
+    split_dataset(args.input_dir, args.output_dir, split_ratios, args.output_format, use_test)
 
 
 if __name__ == "__main__":
