@@ -17,7 +17,8 @@ YOLO数据集支持以下两种主要组织形式：
 YOLO数据集划分工具
 
 **输入格式要求**：
-- ✅ 输入必须为: `dataset/images/ + dataset/labels/`
+- ✅ 标准结构: `dataset/images/ + dataset/labels/`
+- ✅ 混合结构: 图片和txt标签文件在同一个文件夹中
 
 **输出格式支持**：
 - ✅ 格式一：`output/train/images/, output/train/labels/` 等 (默认)
@@ -26,6 +27,9 @@ YOLO数据集划分工具
 ```bash
 # 基础划分 (默认输出格式一)
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录
+
+# 划分混合结构数据集 (图片和txt文件在同一文件夹)
+python yolo_dataset_split.py -i 混合结构数据集目录 -o 输出目录
 
 # 指定输出格式一
 python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --output_format 1
@@ -45,6 +49,8 @@ python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 
 **功能特点**：
 - ✅ 确保数据完整性（输入图片数 = 输出图片数）
 - ✅ 支持背景图片（无标签图片）
+- ✅ 支持混合结构输入（图片和txt文件在同一文件夹）
+- ✅ 智能过滤类别文件（classes.txt等）
 - ✅ 详细统计报告和数据验证
 - ✅ 各类别分布统计
 

@@ -10,17 +10,57 @@ def get_image_extensions():
     return ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
 
 
-def find_corresponding_image(label_file, images_dir):
+def find_corresponding_image(label_file, images_dir, structure='standard'):
     """根据标签文件找到对应的图片文件"""
     base_name = os.path.splitext(label_file)[0]
     image_extensions = get_image_extensions()
     
-    for ext in image_extensions:
-        image_file = base_name + ext
-        image_path = os.path.join(images_dir, image_file)
-        if os.path.exists(image_path):
-            return image_file
+    if structure == 'mixed':
+        # 混合结构：图片和标签在同一目录
+        for ext in image_extensions:
+            image_file = base_name + ext
+            image_path = os.path.join(images_dir, image_file)
+            if os.path.exists(image_path):
+                return image_file
+    else:
+        # 标准结构：图片和标签在不同目录
+        for ext in image_extensions:
+            image_file = base_name + ext
+            image_path = os.path.join(images_dir, image_file)
+            if os.path.exists(image_path):
+                return image_file
     return None
+
+
+def detect_input_structure(base_dir):
+    """检测输入数据集结构类型"""
+    # 检查标准结构：dataset/images/ + dataset/labels/
+    images_dir = os.path.join(base_dir, "images")
+    labels_dir = os.path.join(base_dir, "labels")
+    if os.path.exists(images_dir) and os.path.exists(labels_dir):
+        return 'standard', images_dir, labels_dir
+    
+    # 检查混合结构：所有图片和txt文件在同一个文件夹中
+    img_exts = get_image_extensions()
+    txt_files = []
+    img_files = []
+    
+    try:
+        for file in os.listdir(base_dir):
+            file_path = os.path.join(base_dir, file)
+            if os.path.isfile(file_path):
+                if os.path.splitext(file)[1].lower() in img_exts:
+                    img_files.append(file)
+                elif file.endswith('.txt') and file not in ['classes.txt', 'obj.names', 'names.txt']:
+                    txt_files.append(file)
+        
+        # 如果存在图片文件和txt文件，则认为是混合结构
+        if img_files and txt_files:
+            return 'mixed', base_dir, base_dir
+    except:
+        pass
+    
+    return 'unknown', None, None
 
 
 def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
@@ -28,13 +68,27 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
     按指定比例划分数据集，确保各类别在训练、验证、测试集中尽可能均衡
 
     Args:
-        base_dir (str): 数据集的根目录，需包含 images 和 labels 文件夹
+        base_dir (str): 数据集的根目录，支持标准结构(images/+labels/)或混合结构(图片和txt在同一文件夹)
         output_dir (str): 输出数据集的根目录
         split_ratios (dict): 数据集划分比例，例如 {"train": 0.8, "val": 0.1, "test": 0.1}
         output_format (int): 输出格式，1为格式一，2为格式二 (默认: 1)
     """
-    images_dir = os.path.join(base_dir, "images")
-    labels_dir = os.path.join(base_dir, "labels")
+    # 检测输入结构
+    structure, images_dir, labels_dir = detect_input_structure(base_dir)
+    
+    if structure == 'unknown':
+        print("❌ 错误: 未找到有效的数据集结构")
+        print("支持的输入结构:")
+        print("  1. 标准结构: dataset/images/ + dataset/labels/")
+        print("  2. 混合结构: 图片和txt标签文件在同一个文件夹中")
+        return
+    
+    structure_name = {
+        'standard': '标准结构 (images/ + labels/)',
+        'mixed': '混合结构 (图片和标签在同一文件夹)'
+    }.get(structure, '未知结构')
+    
+    print(f"📁 检测到输入结构: {structure_name}")
 
     if output_format == 1:
         # 格式一: yolo/train/images/, yolo/train/labels/, etc.
@@ -58,7 +112,15 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
                 os.makedirs(os.path.join(output_dir, data_type, split), exist_ok=True)
 
     # 获取所有标签文件
-    label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+    if structure == 'mixed':
+        # 混合结构：排除类别文件
+        all_files = os.listdir(labels_dir)
+        label_files = [f for f in all_files if f.endswith(".txt") and 
+                      f not in ['classes.txt', 'obj.names', 'names.txt']]
+    else:
+        # 标准结构：labels目录下的所有txt文件
+        label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+        
     # 构建图片-类别映射
     image_to_classes = {}  # {image_file: [class1, class2, ...]}
     class_to_images = defaultdict(list)  # {class: [image_files]}
@@ -70,7 +132,7 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
             classes = set(int(line.split()[0]) for line in lines)  # 提取所有类别
             
             # 查找对应的图片文件
-            corresponding_image = find_corresponding_image(label_file, images_dir)
+            corresponding_image = find_corresponding_image(label_file, images_dir, structure)
             if corresponding_image is None:
                 print(f"警告: 找不到标签文件 {label_file} 对应的图片文件")
                 continue
@@ -79,7 +141,14 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
             class_to_images[c].append(corresponding_image)
 
     # 获取所有图片文件（包括有标签和无标签的）
-    all_image_files = [f for f in os.listdir(images_dir) if os.path.splitext(f)[1].lower() in get_image_extensions()]
+    if structure == 'mixed':
+        # 混合结构：从同一目录获取图片文件
+        all_image_files = [f for f in os.listdir(images_dir) 
+                          if os.path.splitext(f)[1].lower() in get_image_extensions()]
+    else:
+        # 标准结构：从images目录获取图片文件
+        all_image_files = [f for f in os.listdir(images_dir) 
+                          if os.path.splitext(f)[1].lower() in get_image_extensions()]
     
     # 随机打乱所有图片
     random.shuffle(all_image_files)
@@ -103,6 +172,12 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
             # 标签文件路径
             label_file = os.path.splitext(image_file)[0] + ".txt"  # 获取对应的标签文件名
             src_label_path = os.path.join(labels_dir, label_file)
+            
+            # 对于混合结构，需要检查标签文件是否为类别文件
+            if (structure == 'mixed' and 
+                label_file in ['classes.txt', 'obj.names', 'names.txt']):
+                # 跳过类别文件
+                continue
             
             if output_format == 1:
                 # 格式一: yolo/train/images/, yolo/train/labels/
@@ -169,7 +244,7 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1):
 def main():
     parser = argparse.ArgumentParser(description="YOLO数据集划分工具")
     parser.add_argument("--input_dir", "-i", required=True, 
-                       help="输入数据集目录 (包含images和labels文件夹)")
+                       help="输入数据集目录 (支持images/+labels/结构或混合结构)")
     parser.add_argument("--output_dir", "-o", required=True,
                        help="输出数据集目录")
     parser.add_argument("--train_ratio", type=float, default=0.8,
@@ -195,16 +270,15 @@ def main():
     if not os.path.exists(args.input_dir):
         print(f"错误: 输入目录 {args.input_dir} 不存在")
         return
-        
-    images_dir = os.path.join(args.input_dir, "images")
-    labels_dir = os.path.join(args.input_dir, "labels")
     
-    if not os.path.exists(images_dir):
-        print(f"错误: 图片目录 {images_dir} 不存在")
-        return
-        
-    if not os.path.exists(labels_dir):
-        print(f"错误: 标签目录 {labels_dir} 不存在")
+    # 检测输入结构
+    structure, images_dir, labels_dir = detect_input_structure(args.input_dir)
+    
+    if structure == 'unknown':
+        print(f"错误: 输入目录 {args.input_dir} 不是有效的数据集结构")
+        print("支持的输入结构:")
+        print("  1. 标准结构: dataset/images/ + dataset/labels/")
+        print("  2. 混合结构: 图片和txt标签文件在同一个文件夹中")
         return
     
     # 设置随机种子
@@ -217,8 +291,14 @@ def main():
         "test": args.test_ratio
     }
     
+    structure_name = {
+        'standard': '标准结构 (images/ + labels/)',
+        'mixed': '混合结构 (图片和标签在同一文件夹)'
+    }.get(structure, '未知结构')
+    
     print(f"开始划分数据集...")
     print(f"输入目录: {args.input_dir}")
+    print(f"输入结构: {structure_name}")
     print(f"输出目录: {args.output_dir}")
     print(f"输出格式: {args.output_format} ({'格式一' if args.output_format == 1 else '格式二'})")
     print(f"训练集比例: {args.train_ratio}")
