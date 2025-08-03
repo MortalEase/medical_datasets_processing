@@ -1,0 +1,564 @@
+import os
+import shutil
+import argparse
+import yaml
+from collections import defaultdict
+from datetime import datetime
+
+
+def get_image_extensions():
+    """返回支持的图片格式扩展名"""
+    return ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
+
+
+def find_class_files(base_dir):
+    """查找类别文件"""
+    class_files = []
+    possible_names = ['classes.txt', 'obj.names', 'names.txt', 'data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml']
+    
+    try:
+        for file in os.listdir(base_dir):
+            if file in possible_names and os.path.isfile(os.path.join(base_dir, file)):
+                class_files.append(file)
+    except:
+        pass
+    
+    return class_files
+
+
+def detect_dataset_structure(base_dir):
+    """检测数据集结构类型"""
+    # 检查标准结构：dataset/images/ + dataset/labels/
+    images_dir = os.path.join(base_dir, "images")
+    labels_dir = os.path.join(base_dir, "labels")
+    if os.path.exists(images_dir) and os.path.exists(labels_dir):
+        return 'standard', images_dir, labels_dir
+    
+    # 检查YOLO格式一结构：train/images/, train/labels/, val/images/, val/labels/
+    train_images = os.path.join(base_dir, "train", "images")
+    train_labels = os.path.join(base_dir, "train", "labels")
+    if os.path.exists(train_images) and os.path.exists(train_labels):
+        return 'format1', base_dir, base_dir
+    
+    # 检查YOLO格式二结构：images/train/, labels/train/
+    images_train = os.path.join(base_dir, "images", "train")
+    labels_train = os.path.join(base_dir, "labels", "train")
+    if os.path.exists(images_train) and os.path.exists(labels_train):
+        return 'format2', base_dir, base_dir
+    
+    # 检查混合结构：所有图片和txt文件在同一个文件夹中
+    img_exts = get_image_extensions()
+    txt_files = []
+    img_files = []
+    
+    try:
+        for file in os.listdir(base_dir):
+            file_path = os.path.join(base_dir, file)
+            if os.path.isfile(file_path):
+                if os.path.splitext(file)[1].lower() in img_exts:
+                    img_files.append(file)
+                elif file.endswith('.txt') and file not in ['classes.txt', 'obj.names', 'names.txt']:
+                    txt_files.append(file)
+        
+        if img_files and txt_files:
+            return 'mixed', base_dir, base_dir
+    except:
+        pass
+    
+    return 'unknown', None, None
+
+
+def get_all_label_dirs(base_dir, structure):
+    """根据结构获取所有标签目录"""
+    label_dirs = []
+    
+    if structure == 'standard':
+        labels_dir = os.path.join(base_dir, "labels")
+        if os.path.exists(labels_dir):
+            label_dirs.append(labels_dir)
+    
+    elif structure == 'format1':
+        # train/labels/, val/labels/, test/labels/
+        for split in ['train', 'val', 'test']:
+            labels_dir = os.path.join(base_dir, split, "labels")
+            if os.path.exists(labels_dir):
+                label_dirs.append(labels_dir)
+    
+    elif structure == 'format2':
+        # labels/train/, labels/val/, labels/test/
+        labels_base = os.path.join(base_dir, "labels")
+        if os.path.exists(labels_base):
+            for split in os.listdir(labels_base):
+                split_dir = os.path.join(labels_base, split)
+                if os.path.isdir(split_dir):
+                    label_dirs.append(split_dir)
+    
+    elif structure == 'mixed':
+        label_dirs.append(base_dir)
+    
+    return label_dirs
+
+
+def read_class_names(class_file_path):
+    """读取类别名称"""
+    class_names = []
+    
+    if class_file_path.endswith(('.yaml', '.yml')):
+        try:
+            with open(class_file_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if 'names' in data:
+                    if isinstance(data['names'], list):
+                        class_names = data['names']
+                    elif isinstance(data['names'], dict):
+                        # 处理 {0: 'class1', 1: 'class2'} 格式
+                        class_names = [data['names'][i] for i in sorted(data['names'].keys())]
+        except:
+            pass
+    else:
+        try:
+            with open(class_file_path, 'r', encoding='utf-8') as f:
+                class_names = [line.strip() for line in f.readlines() if line.strip()]
+        except:
+            pass
+    
+    return class_names
+
+
+def write_class_names(class_file_path, class_names):
+    """写入类别名称"""
+    if class_file_path.endswith(('.yaml', '.yml')):
+        try:
+            # 读取现有的yaml文件
+            data = {}
+            if os.path.exists(class_file_path):
+                with open(class_file_path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f) or {}
+            
+            # 更新类别信息
+            data['nc'] = len(class_names)
+            data['names'] = class_names
+            
+            with open(class_file_path, 'w', encoding='utf-8') as f:
+                yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+        except Exception as e:
+            print(f"错误: 无法写入YAML文件 {class_file_path}: {e}")
+    else:
+        try:
+            with open(class_file_path, 'w', encoding='utf-8') as f:
+                for name in class_names:
+                    f.write(f"{name}\n")
+        except Exception as e:
+            print(f"错误: 无法写入文本文件 {class_file_path}: {e}")
+
+
+def analyze_dataset_classes(base_dir):
+    """分析数据集中的类别使用情况"""
+    structure, _, _ = detect_dataset_structure(base_dir)
+    
+    if structure == 'unknown':
+        print("❌ 错误: 未找到有效的数据集结构")
+        return None, None
+    
+    print(f"📁 检测到数据集结构: {structure}")
+    
+    # 获取所有标签目录
+    label_dirs = get_all_label_dirs(base_dir, structure)
+    
+    # 统计类别使用情况
+    class_usage = defaultdict(int)  # {class_id: count}
+    total_annotations = 0
+    
+    for labels_dir in label_dirs:
+        if structure == 'mixed':
+            # 混合结构：排除类别文件
+            label_files = [f for f in os.listdir(labels_dir) 
+                          if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']]
+        else:
+            label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+        
+        for label_file in label_files:
+            label_path = os.path.join(labels_dir, label_file)
+            try:
+                with open(label_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            class_id = int(line.split()[0])
+                            class_usage[class_id] += 1
+                            total_annotations += 1
+            except Exception as e:
+                print(f"警告: 无法读取标签文件 {label_path}: {e}")
+    
+    # 查找类别文件
+    class_files = find_class_files(base_dir)
+    class_names = []
+    
+    if class_files:
+        class_file_path = os.path.join(base_dir, class_files[0])
+        class_names = read_class_names(class_file_path)
+        print(f"📋 找到类别文件: {class_files[0]}")
+    
+    return class_usage, class_names
+
+
+def delete_classes(base_dir, class_ids_to_delete, backup=True):
+    """删除指定的类别"""
+    print(f"\n开始删除类别: {class_ids_to_delete}")
+    
+    # 分析当前数据集
+    class_usage, class_names = analyze_dataset_classes(base_dir)
+    if class_usage is None:
+        return False
+    
+    # 验证要删除的类别是否在类别文件中定义
+    all_defined_classes = set(range(len(class_names))) if class_names else set()
+    used_classes = set(class_usage.keys())
+    
+    # 检查要删除的类别是否在定义范围内
+    invalid_classes = set(class_ids_to_delete) - all_defined_classes
+    if invalid_classes:
+        print(f"错误: 以下类别超出定义范围 (0-{len(class_names)-1}): {invalid_classes}")
+        return False
+    
+    # 分类：已使用的类别和未使用的类别
+    used_classes_to_delete = set(class_ids_to_delete) & used_classes
+    unused_classes_to_delete = set(class_ids_to_delete) - used_classes
+    
+    print(f"要删除的已使用类别: {used_classes_to_delete}")
+    print(f"要删除的未使用类别: {unused_classes_to_delete}")
+    
+    if not class_ids_to_delete:
+        print("没有有效的类别需要删除")
+        return False
+    
+    # 创建备份
+    if backup:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = f"{base_dir}_backup_before_delete_{timestamp}"
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir)
+        shutil.copytree(base_dir, backup_dir)
+        print(f"✓ 已创建备份: {backup_dir}")
+    
+    structure, _, _ = detect_dataset_structure(base_dir)
+    label_dirs = get_all_label_dirs(base_dir, structure)
+    
+    # 所有要删除的类别
+    all_classes_to_delete = set(class_ids_to_delete)
+    
+    # 创建类别映射 (删除后重新编号)
+    remaining_classes = sorted([c for c in used_classes if c not in all_classes_to_delete])
+    class_mapping = {old_id: new_id for new_id, old_id in enumerate(remaining_classes)}
+    
+    deleted_annotations = 0
+    updated_files = 0
+    
+    # 处理每个标签目录 (只处理已使用的类别)
+    for labels_dir in label_dirs:
+        if structure == 'mixed':
+            label_files = [f for f in os.listdir(labels_dir) 
+                          if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']]
+        else:
+            label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+        
+        for label_file in label_files:
+            label_path = os.path.join(labels_dir, label_file)
+            updated_lines = []
+            file_changed = False
+            
+            try:
+                with open(label_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            parts = line.split()
+                            class_id = int(parts[0])
+                            
+                            if class_id in all_classes_to_delete:
+                                # 删除这个标注
+                                deleted_annotations += 1
+                                file_changed = True
+                            else:
+                                # 重新映射类别ID
+                                new_class_id = class_mapping[class_id]
+                                parts[0] = str(new_class_id)
+                                updated_lines.append(' '.join(parts))
+                                if new_class_id != class_id:
+                                    file_changed = True
+                
+                if file_changed:
+                    with open(label_path, 'w') as f:
+                        for line in updated_lines:
+                            f.write(line + '\n')
+                    updated_files += 1
+                    
+            except Exception as e:
+                print(f"错误: 无法处理标签文件 {label_path}: {e}")
+    
+    # 更新类别文件 (删除所有指定的类别，包括未使用的)
+    class_files = find_class_files(base_dir)
+    if class_files and class_names:
+        # 创建新的类别名称列表，排除所有要删除的类别
+        remaining_class_indices = [i for i in range(len(class_names)) if i not in all_classes_to_delete]
+        updated_class_names = [class_names[i] for i in remaining_class_indices]
+        
+        for class_file in class_files:
+            class_file_path = os.path.join(base_dir, class_file)
+            write_class_names(class_file_path, updated_class_names)
+            print(f"✓ 已更新类别文件: {class_file}")
+    
+    print(f"\n删除操作完成:")
+    print(f"删除的类别: {all_classes_to_delete}")
+    print(f"删除的标注数量: {deleted_annotations}")
+    print(f"更新的文件数量: {updated_files}")
+    print(f"剩余类别数量: {len(class_names) - len(all_classes_to_delete) if class_names else 0}")
+    
+    return True
+
+
+def rename_classes(base_dir, class_renames, backup=True):
+    """重命名类别 (只更新类别文件中的名称，不改变标签文件中的ID)"""
+    print(f"\n开始重命名类别: {class_renames}")
+    
+    # 查找类别文件
+    class_files = find_class_files(base_dir)
+    if not class_files:
+        print("错误: 未找到类别文件")
+        return False
+    
+    # 创建备份
+    if backup:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = f"{base_dir}_backup_before_rename_{timestamp}"
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir)
+        shutil.copytree(base_dir, backup_dir)
+        print(f"✓ 已创建备份: {backup_dir}")
+    
+    # 读取现有类别名称
+    class_file_path = os.path.join(base_dir, class_files[0])
+    class_names = read_class_names(class_file_path)
+    
+    if not class_names:
+        print("错误: 无法读取类别名称")
+        return False
+    
+    print(f"原始类别: {class_names}")
+    
+    # 应用重命名
+    updated_class_names = class_names.copy()
+    for old_name, new_name in class_renames.items():
+        if old_name in updated_class_names:
+            index = updated_class_names.index(old_name)
+            updated_class_names[index] = new_name
+            print(f"✓ 重命名: {old_name} -> {new_name}")
+        else:
+            print(f"警告: 类别 '{old_name}' 不存在")
+    
+    # 更新所有类别文件
+    for class_file in class_files:
+        class_file_path = os.path.join(base_dir, class_file)
+        write_class_names(class_file_path, updated_class_names)
+        print(f"✓ 已更新类别文件: {class_file}")
+    
+    print(f"更新后类别: {updated_class_names}")
+    print("重命名操作完成!")
+    
+    return True
+
+
+def cleanup_backups(base_dir, keep_count=5, dry_run=False):
+    """清理旧的备份文件夹"""
+    import glob
+    import re
+    
+    print(f"\n🧹 清理备份文件夹...")
+    
+    # 查找所有备份文件夹
+    backup_pattern = f"{base_dir}_backup_*"
+    backup_dirs = glob.glob(backup_pattern)
+    
+    if not backup_dirs:
+        print("未找到任何备份文件夹")
+        return
+    
+    # 按时间戳排序（提取时间戳部分）
+    def extract_timestamp(path):
+        # 匹配时间戳格式 YYYYMMDD_HHMMSS
+        match = re.search(r'_(\d{8}_\d{6})$', path)
+        return match.group(1) if match else '00000000_000000'
+    
+    backup_dirs.sort(key=extract_timestamp, reverse=True)
+    
+    print(f"找到 {len(backup_dirs)} 个备份文件夹:")
+    for i, backup_dir in enumerate(backup_dirs):
+        timestamp = extract_timestamp(backup_dir)
+        size = get_folder_size(backup_dir)
+        status = "保留" if i < keep_count else "删除"
+        print(f"  {i+1}. {os.path.basename(backup_dir)} (时间: {timestamp}, 大小: {size:.1f}MB) - {status}")
+    
+    # 删除超出保留数量的备份
+    to_delete = backup_dirs[keep_count:]
+    
+    if not to_delete:
+        print(f"✓ 所有备份都在保留范围内 (保留最新 {keep_count} 个)")
+        return
+    
+    if dry_run:
+        print(f"\n[演习模式] 将要删除 {len(to_delete)} 个旧备份:")
+        for backup_dir in to_delete:
+            print(f"  - {backup_dir}")
+        print("使用 --execute 参数执行实际删除")
+        return
+    
+    print(f"\n开始删除 {len(to_delete)} 个旧备份...")
+    deleted_count = 0
+    total_size_freed = 0
+    
+    for backup_dir in to_delete:
+        try:
+            size = get_folder_size(backup_dir)
+            shutil.rmtree(backup_dir)
+            print(f"✓ 已删除: {backup_dir}")
+            deleted_count += 1
+            total_size_freed += size
+        except Exception as e:
+            print(f"✗ 删除失败: {backup_dir} - {e}")
+    
+    print(f"\n清理完成:")
+    print(f"删除了 {deleted_count} 个备份文件夹")
+    print(f"释放空间: {total_size_freed:.1f}MB")
+    print(f"保留最新 {len(backup_dirs) - deleted_count} 个备份")
+
+
+def get_folder_size(folder_path):
+    """获取文件夹大小（MB）"""
+    total_size = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                if os.path.exists(file_path):
+                    total_size += os.path.getsize(file_path)
+    except:
+        pass
+    return total_size / (1024 * 1024)  # 转换为MB
+
+
+def show_dataset_info(base_dir):
+    """显示数据集信息"""
+    print(f"\n📊 数据集信息分析: {base_dir}")
+    print("=" * 50)
+    
+    # 分析数据集
+    class_usage, class_names = analyze_dataset_classes(base_dir)
+    if class_usage is None:
+        return
+    
+    # 显示类别信息
+    print(f"📋 类别定义 (共 {len(class_names)} 个):")
+    for i, name in enumerate(class_names):
+        usage_count = class_usage.get(i, 0)
+        print(f"  {i}: {name} (使用 {usage_count} 次)")
+    
+    # 显示使用统计
+    print(f"\n📈 类别使用统计:")
+    total_annotations = sum(class_usage.values())
+    print(f"总标注数量: {total_annotations}")
+    
+    if class_usage:
+        used_classes = len(class_usage)
+        unused_classes = [i for i in range(len(class_names)) if i not in class_usage]
+        
+        print(f"已使用类别: {used_classes}")
+        if unused_classes:
+            print(f"未使用类别: {unused_classes}")
+            print(f"未使用类别名称: {[class_names[i] for i in unused_classes if i < len(class_names)]}")
+        
+        # 显示使用频率排序
+        sorted_usage = sorted(class_usage.items(), key=lambda x: x[1], reverse=True)
+        print(f"\n使用频率排序:")
+        for class_id, count in sorted_usage:
+            class_name = class_names[class_id] if class_id < len(class_names) else f"未知类别{class_id}"
+            percentage = count / total_annotations * 100
+            print(f"  类别 {class_id} ({class_name}): {count} 次 ({percentage:.1f}%)")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="YOLO数据集类别管理工具")
+    parser.add_argument("--dataset_dir", "-d", required=True,
+                       help="数据集目录路径")
+    
+    subparsers = parser.add_subparsers(dest='command', help='可用命令')
+    
+    # 信息命令
+    info_parser = subparsers.add_parser('info', help='显示数据集类别信息')
+    
+    # 删除命令
+    delete_parser = subparsers.add_parser('delete', help='删除指定类别')
+    delete_parser.add_argument("--class_ids", "-c", nargs='+', type=int, required=True,
+                              help="要删除的类别ID列表")
+    delete_parser.add_argument("--no-backup", action="store_true",
+                              help="不创建备份")
+    
+    # 重命名命令
+    rename_parser = subparsers.add_parser('rename', help='重命名类别')
+    rename_parser.add_argument("--renames", "-r", nargs='+', required=True,
+                              help="重命名映射，格式: old_name1:new_name1 old_name2:new_name2")
+    rename_parser.add_argument("--no-backup", action="store_true",
+                              help="不创建备份")
+    
+    # 备份清理命令
+    cleanup_parser = subparsers.add_parser('cleanup', help='清理旧的备份文件夹')
+    cleanup_parser.add_argument("--keep", type=int, default=5,
+                               help="保留最新的备份数量 (默认: 5)")
+    cleanup_parser.add_argument("--dry-run", action="store_true",
+                               help="演习模式，只显示将要删除的备份，不执行实际删除")
+    cleanup_parser.add_argument("--execute", action="store_true",
+                               help="执行实际删除操作")
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    # 验证数据集目录
+    if not os.path.exists(args.dataset_dir):
+        print(f"错误: 数据集目录 {args.dataset_dir} 不存在")
+        return
+    
+    if args.command == 'info':
+        show_dataset_info(args.dataset_dir)
+    
+    elif args.command == 'delete':
+        backup = not args.no_backup
+        delete_classes(args.dataset_dir, args.class_ids, backup)
+    
+    elif args.command == 'rename':
+        backup = not args.no_backup
+        
+        # 解析重命名映射
+        class_renames = {}
+        for rename_pair in args.renames:
+            try:
+                old_name, new_name = rename_pair.split(':', 1)
+                class_renames[old_name] = new_name
+            except ValueError:
+                print(f"错误: 无效的重命名格式 '{rename_pair}'，应为 'old_name:new_name'")
+                return
+        
+        rename_classes(args.dataset_dir, class_renames, backup)
+    
+    elif args.command == 'cleanup':
+        if args.dry_run and args.execute:
+            print("错误: --dry-run 和 --execute 不能同时使用")
+            return
+        
+        dry_run = args.dry_run or not args.execute
+        cleanup_backups(args.dataset_dir, args.keep, dry_run)
+
+
+if __name__ == "__main__":
+    main()

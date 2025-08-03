@@ -57,6 +57,77 @@ python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 
 - ✅ 详细统计报告和数据验证
 - ✅ 各类别分布统计
 
+## yolo_class_manager.py
+YOLO数据集类别管理工具 - 支持删除、重命名类别和备份管理
+
+**支持的数据集格式**：
+- ✅ 标准结构：`dataset/images/ + dataset/labels/`
+- ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等 (按数据集划分分组)
+- ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等 (按文件类型分组)
+- ✅ 混合结构：图片和txt标签文件在同一个文件夹中
+
+**支持的类别文件格式**：
+- ✅ 文本格式：`classes.txt`, `obj.names`, `names.txt`
+- ✅ YAML格式：`data.yaml`, `data.yml`, `dataset.yaml`, `dataset.yml`
+
+```bash
+# 查看数据集类别信息
+python yolo_class_manager.py -d 数据集目录 info
+
+# 删除指定类别（支持已使用和未使用的类别）
+python yolo_class_manager.py -d 数据集目录 delete -c 1 7 5
+
+# 删除类别时不创建备份
+python yolo_class_manager.py -d 数据集目录 delete -c 1 7 --no-backup
+
+# 重命名类别名称
+python yolo_class_manager.py -d 数据集目录 rename -r "old_name:new_name"
+
+# 批量重命名多个类别
+python yolo_class_manager.py -d 数据集目录 rename -r "cat:feline" "dog:canine"
+
+# 重命名时不创建备份
+python yolo_class_manager.py -d 数据集目录 rename -r "old_name:new_name" --no-backup
+
+# 查看备份状态（演习模式）
+python yolo_class_manager.py -d 数据集目录 cleanup --dry-run
+
+# 清理旧备份，保留最新5个
+python yolo_class_manager.py -d 数据集目录 cleanup --execute
+
+# 自定义保留备份数量
+python yolo_class_manager.py -d 数据集目录 cleanup --execute --keep 3
+```
+
+**功能特点**：
+- 🗑️ **删除类别**: 支持删除已使用和未使用的类别，自动重新编号剩余类别
+- ✏️ **重命名类别**: 修改类别文件中的类别名称，不影响标签文件中的ID
+- 📊 **信息分析**: 显示类别定义、使用统计、频率排序等详细信息
+- 🛡️ **安全备份**: 自动创建带时间戳的备份，避免数据丢失
+- 🧹 **备份管理**: 智能清理旧备份，释放存储空间
+- 🔍 **智能检测**: 自动识别数据集结构和类别文件格式
+- ⚠️ **数据验证**: 验证操作前的数据完整性和有效性
+
+**使用示例**：
+```bash
+# 分析医疗数据集的类别使用情况
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" info
+
+# 删除未使用的类别1和7
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" delete -c 1 7
+
+# 重命名医疗类别
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" rename -r "arco_0:normal" "arco_0_ex:normal_ex"
+
+# 清理超过5个的旧备份
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" cleanup --execute --keep 5
+```
+
+**备份命名规则**：
+- 删除操作：`dataset_backup_before_delete_20250803_142530`
+- 重命名操作：`dataset_backup_before_rename_20250803_142530`
+- 时间戳格式：`YYYYMMDD_HHMMSS`
+
 ## yolo_dataset_analyzer.py
 YOLO数据集分析工具 - 支持多种数据集结构
 
@@ -263,14 +334,18 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 ### YOLO数据集格式支持情况
 - **yolo_dataset_analyzer.py**: 支持格式一、格式二及混合结构
 - **yolo_dataset_split.py**: 输入简单结构(images/+labels/)，可输出格式一或格式二
+- **yolo_class_manager.py**: 支持标准结构、格式一、格式二及混合结构
 - **yolo_label_cleaner.py**: 支持格式一、格式二
 - **yolo_dataset_viewer.py**: 支持格式一、格式二
 - **yolo2coco.py**: 支持格式一、格式二
 
 ### 推荐工作流程
 1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集
-2. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
-3. 使用 `yolo_dataset_analyzer.py` 验证划分结果（使用--stats参数）
-4. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
+2. 使用 `yolo_class_manager.py info` 查看类别使用情况
+3. 使用 `yolo_class_manager.py delete/rename` 管理类别（如需要）
+4. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
+5. 使用 `yolo_dataset_analyzer.py` 验证划分结果（使用--stats参数）
+6. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
+7. 使用 `yolo_class_manager.py cleanup` 定期清理备份文件
 
 使用 `-h` 或 `--help` 查看详细参数说明
