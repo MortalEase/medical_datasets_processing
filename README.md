@@ -97,6 +97,15 @@ python yolo_class_manager.py -d 数据集目录 cleanup --execute
 
 # 自定义保留备份数量
 python yolo_class_manager.py -d 数据集目录 cleanup --execute --keep 3
+
+# 根据目标类别顺序重排类别ID并更新类别文件（预览模式）
+python yolo_class_manager.py -d 数据集目录 reindex --to-file path/to/classes.txt --dry-run
+
+# 实际执行重排并备份
+python yolo_class_manager.py -d 数据集目录 reindex --to-classes classA classB classC --execute
+
+# 要求当前与目标类别集合完全一致（否则中止）
+python yolo_class_manager.py -d 数据集目录 reindex --to-file data.yaml --require-same-set --execute
 ```
 
 **功能特点**：
@@ -127,6 +136,8 @@ python yolo_class_manager.py -d "D:\datasets\medical_yolo" cleanup --execute --k
 - 删除操作：`dataset_backup_before_delete_20250803_142530`
 - 重命名操作：`dataset_backup_before_rename_20250803_142530`
 - 时间戳格式：`YYYYMMDD_HHMMSS`
+
+注：本仓库脚本已统一复用 `utils/yolo_utils.py` 中的公共函数（如类别文件读取/写入、YOLO结构检测、图片扩展名列表等），提升一致性与复用性。
 
 ## yolo_dataset_analyzer.py
 YOLO数据集分析工具 - 支持多种数据集结构

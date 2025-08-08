@@ -3,11 +3,14 @@ import shutil
 import random
 import argparse
 from collections import defaultdict
+from utils.yolo_utils import (
+    get_image_extensions,
+    list_possible_class_files,
+)
 
 
-def get_image_extensions():
-    """返回支持的图片格式扩展名"""
-    return ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
+def get_image_extensions_local():
+    return get_image_extensions()
 
 
 def find_corresponding_image(label_file, images_dir, structure='standard'):
@@ -33,18 +36,7 @@ def find_corresponding_image(label_file, images_dir, structure='standard'):
 
 
 def find_class_files(base_dir):
-    """查找类别文件"""
-    class_files = []
-    possible_names = ['classes.txt', 'obj.names', 'names.txt', 'data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml']
-    
-    try:
-        for file in os.listdir(base_dir):
-            if file in possible_names and os.path.isfile(os.path.join(base_dir, file)):
-                class_files.append(file)
-    except:
-        pass
-    
-    return class_files
+    return list_possible_class_files(base_dir)
 
 
 def detect_input_structure(base_dir):
@@ -172,12 +164,16 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
     # 获取所有图片文件（包括有标签和无标签的）
     if structure == 'mixed':
         # 混合结构：从同一目录获取图片文件
-        all_image_files = [f for f in os.listdir(images_dir) 
-                          if os.path.splitext(f)[1].lower() in get_image_extensions()]
+        all_image_files = [
+            f for f in os.listdir(images_dir)
+            if os.path.splitext(f)[1].lower() in get_image_extensions()
+        ]
     else:
         # 标准结构：从images目录获取图片文件
-        all_image_files = [f for f in os.listdir(images_dir) 
-                          if os.path.splitext(f)[1].lower() in get_image_extensions()]
+        all_image_files = [
+            f for f in os.listdir(images_dir)
+            if os.path.splitext(f)[1].lower() in get_image_extensions()
+        ]
     
     # 随机打乱所有图片
     random.shuffle(all_image_files)

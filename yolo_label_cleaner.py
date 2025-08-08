@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-YOLO数据集标签清理工具
-支持格式一和格式二的YOLO数据集结构
-支持多种清理策略，让用户灵活决定清理范围
-
-作者: AI Assistant
-日期: 2025年7月29日
-"""
 
 import os
 import shutil

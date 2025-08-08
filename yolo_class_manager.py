@@ -1,160 +1,24 @@
 import os
 import shutil
 import argparse
-import yaml
 from collections import defaultdict
 from datetime import datetime
+from utils.yolo_utils import (
+    detect_yolo_structure,
+    yolo_label_dirs,
+    iter_label_files,
+    list_possible_class_files,
+    read_class_names,
+    write_class_names,
+    get_folder_size,
+)
 
 
-def get_image_extensions():
-    """返回支持的图片格式扩展名"""
-    return ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
-
-
-def find_class_files(base_dir):
-    """查找类别文件"""
-    class_files = []
-    possible_names = ['classes.txt', 'obj.names', 'names.txt', 'data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml']
-    
-    try:
-        for file in os.listdir(base_dir):
-            if file in possible_names and os.path.isfile(os.path.join(base_dir, file)):
-                class_files.append(file)
-    except:
-        pass
-    
-    return class_files
-
-
-def detect_dataset_structure(base_dir):
-    """检测数据集结构类型"""
-    # 检查标准结构：dataset/images/ + dataset/labels/
-    images_dir = os.path.join(base_dir, "images")
-    labels_dir = os.path.join(base_dir, "labels")
-    if os.path.exists(images_dir) and os.path.exists(labels_dir):
-        return 'standard', images_dir, labels_dir
-    
-    # 检查YOLO格式一结构：train/images/, train/labels/, val/images/, val/labels/
-    train_images = os.path.join(base_dir, "train", "images")
-    train_labels = os.path.join(base_dir, "train", "labels")
-    if os.path.exists(train_images) and os.path.exists(train_labels):
-        return 'format1', base_dir, base_dir
-    
-    # 检查YOLO格式二结构：images/train/, labels/train/
-    images_train = os.path.join(base_dir, "images", "train")
-    labels_train = os.path.join(base_dir, "labels", "train")
-    if os.path.exists(images_train) and os.path.exists(labels_train):
-        return 'format2', base_dir, base_dir
-    
-    # 检查混合结构：所有图片和txt文件在同一个文件夹中
-    img_exts = get_image_extensions()
-    txt_files = []
-    img_files = []
-    
-    try:
-        for file in os.listdir(base_dir):
-            file_path = os.path.join(base_dir, file)
-            if os.path.isfile(file_path):
-                if os.path.splitext(file)[1].lower() in img_exts:
-                    img_files.append(file)
-                elif file.endswith('.txt') and file not in ['classes.txt', 'obj.names', 'names.txt']:
-                    txt_files.append(file)
-        
-        if img_files and txt_files:
-            return 'mixed', base_dir, base_dir
-    except:
-        pass
-    
-    return 'unknown', None, None
-
-
-def get_all_label_dirs(base_dir, structure):
-    """根据结构获取所有标签目录"""
-    label_dirs = []
-    
-    if structure == 'standard':
-        labels_dir = os.path.join(base_dir, "labels")
-        if os.path.exists(labels_dir):
-            label_dirs.append(labels_dir)
-    
-    elif structure == 'format1':
-        # train/labels/, val/labels/, test/labels/
-        for split in ['train', 'val', 'test']:
-            labels_dir = os.path.join(base_dir, split, "labels")
-            if os.path.exists(labels_dir):
-                label_dirs.append(labels_dir)
-    
-    elif structure == 'format2':
-        # labels/train/, labels/val/, labels/test/
-        labels_base = os.path.join(base_dir, "labels")
-        if os.path.exists(labels_base):
-            for split in os.listdir(labels_base):
-                split_dir = os.path.join(labels_base, split)
-                if os.path.isdir(split_dir):
-                    label_dirs.append(split_dir)
-    
-    elif structure == 'mixed':
-        label_dirs.append(base_dir)
-    
-    return label_dirs
-
-
-def read_class_names(class_file_path):
-    """读取类别名称"""
-    class_names = []
-    
-    if class_file_path.endswith(('.yaml', '.yml')):
-        try:
-            with open(class_file_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
-                if 'names' in data:
-                    if isinstance(data['names'], list):
-                        class_names = data['names']
-                    elif isinstance(data['names'], dict):
-                        # 处理 {0: 'class1', 1: 'class2'} 格式
-                        class_names = [data['names'][i] for i in sorted(data['names'].keys())]
-        except:
-            pass
-    else:
-        try:
-            with open(class_file_path, 'r', encoding='utf-8') as f:
-                class_names = [line.strip() for line in f.readlines() if line.strip()]
-        except:
-            pass
-    
-    return class_names
-
-
-def write_class_names(class_file_path, class_names):
-    """写入类别名称"""
-    if class_file_path.endswith(('.yaml', '.yml')):
-        try:
-            # 读取现有的yaml文件
-            data = {}
-            if os.path.exists(class_file_path):
-                with open(class_file_path, 'r', encoding='utf-8') as f:
-                    data = yaml.safe_load(f) or {}
-            
-            # 更新类别信息
-            data['nc'] = len(class_names)
-            data['names'] = class_names
-            
-            with open(class_file_path, 'w', encoding='utf-8') as f:
-                yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
-        except Exception as e:
-            print(f"错误: 无法写入YAML文件 {class_file_path}: {e}")
-    else:
-        try:
-            with open(class_file_path, 'w', encoding='utf-8') as f:
-                for name in class_names:
-                    f.write(f"{name}\n")
-        except Exception as e:
-            print(f"错误: 无法写入文本文件 {class_file_path}: {e}")
 
 
 def analyze_dataset_classes(base_dir):
     """分析数据集中的类别使用情况"""
-    structure, _, _ = detect_dataset_structure(base_dir)
+    structure, _, _ = detect_yolo_structure(base_dir)
     
     if structure == 'unknown':
         print("❌ 错误: 未找到有效的数据集结构")
@@ -163,21 +27,14 @@ def analyze_dataset_classes(base_dir):
     print(f"📁 检测到数据集结构: {structure}")
     
     # 获取所有标签目录
-    label_dirs = get_all_label_dirs(base_dir, structure)
+    label_dirs = yolo_label_dirs(base_dir, structure)
     
     # 统计类别使用情况
     class_usage = defaultdict(int)  # {class_id: count}
     total_annotations = 0
     
     for labels_dir in label_dirs:
-        if structure == 'mixed':
-            # 混合结构：排除类别文件
-            label_files = [f for f in os.listdir(labels_dir) 
-                          if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']]
-        else:
-            label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
-        
-        for label_file in label_files:
+        for label_file in iter_label_files(labels_dir, structure):
             label_path = os.path.join(labels_dir, label_file)
             try:
                 with open(label_path, 'r') as f:
@@ -191,7 +48,7 @@ def analyze_dataset_classes(base_dir):
                 print(f"警告: 无法读取标签文件 {label_path}: {e}")
     
     # 查找类别文件
-    class_files = find_class_files(base_dir)
+    class_files = list_possible_class_files(base_dir)
     class_names = []
     
     if class_files:
@@ -241,8 +98,8 @@ def delete_classes(base_dir, class_ids_to_delete, backup=True):
         shutil.copytree(base_dir, backup_dir)
         print(f"✓ 已创建备份: {backup_dir}")
     
-    structure, _, _ = detect_dataset_structure(base_dir)
-    label_dirs = get_all_label_dirs(base_dir, structure)
+    structure, _, _ = detect_yolo_structure(base_dir)
+    label_dirs = yolo_label_dirs(base_dir, structure)
     
     # 所有要删除的类别
     all_classes_to_delete = set(class_ids_to_delete)
@@ -256,13 +113,7 @@ def delete_classes(base_dir, class_ids_to_delete, backup=True):
     
     # 处理每个标签目录 (只处理已使用的类别)
     for labels_dir in label_dirs:
-        if structure == 'mixed':
-            label_files = [f for f in os.listdir(labels_dir) 
-                          if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']]
-        else:
-            label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
-        
-        for label_file in label_files:
+        for label_file in iter_label_files(labels_dir, structure):
             label_path = os.path.join(labels_dir, label_file)
             updated_lines = []
             file_changed = False
@@ -297,7 +148,7 @@ def delete_classes(base_dir, class_ids_to_delete, backup=True):
                 print(f"错误: 无法处理标签文件 {label_path}: {e}")
     
     # 更新类别文件 (删除所有指定的类别，包括未使用的)
-    class_files = find_class_files(base_dir)
+    class_files = list_possible_class_files(base_dir)
     if class_files and class_names:
         # 创建新的类别名称列表，排除所有要删除的类别
         remaining_class_indices = [i for i in range(len(class_names)) if i not in all_classes_to_delete]
@@ -322,7 +173,7 @@ def rename_classes(base_dir, class_renames, backup=True):
     print(f"\n开始重命名类别: {class_renames}")
     
     # 查找类别文件
-    class_files = find_class_files(base_dir)
+    class_files = list_possible_class_files(base_dir)
     if not class_files:
         print("错误: 未找到类别文件")
         return False
@@ -394,9 +245,9 @@ def cleanup_backups(base_dir, keep_count=5, dry_run=False):
     print(f"找到 {len(backup_dirs)} 个备份文件夹:")
     for i, backup_dir in enumerate(backup_dirs):
         timestamp = extract_timestamp(backup_dir)
-        size = get_folder_size(backup_dir)
-        status = "保留" if i < keep_count else "删除"
-        print(f"  {i+1}. {os.path.basename(backup_dir)} (时间: {timestamp}, 大小: {size:.1f}MB) - {status}")
+    size = get_folder_size(backup_dir)
+    status = "保留" if i < keep_count else "删除"
+    print(f"  {i+1}. {os.path.basename(backup_dir)} (时间: {timestamp}, 大小: {size:.1f}MB) - {status}")
     
     # 删除超出保留数量的备份
     to_delete = backup_dirs[keep_count:]
@@ -430,20 +281,6 @@ def cleanup_backups(base_dir, keep_count=5, dry_run=False):
     print(f"删除了 {deleted_count} 个备份文件夹")
     print(f"释放空间: {total_size_freed:.1f}MB")
     print(f"保留最新 {len(backup_dirs) - deleted_count} 个备份")
-
-
-def get_folder_size(folder_path):
-    """获取文件夹大小（MB）"""
-    total_size = 0
-    try:
-        for dirpath, dirnames, filenames in os.walk(folder_path):
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
-                if os.path.exists(file_path):
-                    total_size += os.path.getsize(file_path)
-    except:
-        pass
-    return total_size / (1024 * 1024)  # 转换为MB
 
 
 def show_dataset_info(base_dir):
@@ -496,7 +333,7 @@ def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry
     - dry_run: 演习模式，仅统计与预览，不实际改写
     """
     # 读取当前类别
-    class_files = find_class_files(base_dir)
+    class_files = list_possible_class_files(base_dir)
     if not class_files:
         print("错误: 未找到类别文件，无法进行重排")
         return False
@@ -549,21 +386,15 @@ def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry
         shutil.copytree(base_dir, backup_dir)
         print(f"✓ 已创建备份: {backup_dir}")
 
-    structure, _, _ = detect_dataset_structure(base_dir)
-    label_dirs = get_all_label_dirs(base_dir, structure)
+    structure, _, _ = detect_yolo_structure(base_dir)
+    label_dirs = yolo_label_dirs(base_dir, structure)
 
     updated_files = 0
     dropped_annotations = 0
     total_annotations = 0
 
     for labels_dir in label_dirs:
-        if structure == 'mixed':
-            label_files = [f for f in os.listdir(labels_dir)
-                          if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']]
-        else:
-            label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
-
-        for label_file in label_files:
+        for label_file in iter_label_files(labels_dir, structure):
             label_path = os.path.join(labels_dir, label_file)
             try:
                 new_lines = []

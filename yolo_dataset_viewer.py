@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-YOLO数据集遍历查看器
-功能：遍历YOLO格式数据集，显示图片标注框和类名
-作者：GitHub Copilot
-"""
 
 import os
 import sys

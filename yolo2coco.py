@@ -5,10 +5,6 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 import argparse
 
-# python yolo2coco.py --root_dir VisDrone2019-DET-train --save_path train.json
-# python yolo2coco.py --root_dir VisDrone2019-DET-val --save_path val.json
-# python yolo2coco.py --root_dir VisDrone2019-DET-test-dev --save_path test.json
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_dir', default='./dataset/valid',type=str, help="root path of images and labels, include ./images and ./labels and classes.txt")
 parser.add_argument('--save_path', type=str,default='./valid.json', help="if not split the dataset, give a path to a json file")

@@ -4,11 +4,11 @@ import argparse
 import yaml
 import random
 from prettytable import PrettyTable
+from utils.yolo_utils import get_image_extensions, detect_yolo_structure
 
 
-def get_image_extensions():
-    """返回支持的图片格式扩展名"""
-    return ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp']
+def get_image_extensions_local():
+    return get_image_extensions()
 
 
 def find_classes_file(dataset_dir):

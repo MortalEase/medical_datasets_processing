@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-COCO数据集划分工具
-将COCO格式数据集按指定比例划分为训练集、验证集和测试集
-
-功能特点:
-1. 支持COCO格式数据集的智能划分
-2. 确保各类别在各数据集中的分布均衡
-3. 保持图像和标注的对应关系
-4. 支持自定义划分比例
-5. 生成划分后的COCO格式标注文件
-
-作者: Medical Dataset Processing Team
-日期: 2025-07-24
-"""
 
 import os
 import json
