@@ -485,6 +485,129 @@ def show_dataset_info(base_dir):
             print(f"  类别 {class_id} ({class_name}): {count} 次 ({percentage:.1f}%)")
 
 
+def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry_run=True, require_same_set=False):
+    """根据目标类别顺序重排数据集中所有标签文件的类别ID，并更新类别文件。
+
+    参数:
+    - base_dir: 数据集根目录
+    - target_class_names: 目标类别顺序(list[str])，写入类别文件并作为新ID映射依据
+    - strict: 若为True，遇到旧类别在目标表中不存在则报错终止；否则跳过该标注
+    - backup: 是否创建备份
+    - dry_run: 演习模式，仅统计与预览，不实际改写
+    """
+    # 读取当前类别
+    class_files = find_class_files(base_dir)
+    if not class_files:
+        print("错误: 未找到类别文件，无法进行重排")
+        return False
+    current_class_file = os.path.join(base_dir, class_files[0])
+    current_names = read_class_names(current_class_file)
+    if not current_names:
+        print("错误: 无法读取当前类别名称")
+        return False
+
+    print("当前类别顺序:", current_names)
+    print("目标类别顺序:", target_class_names)
+
+    if require_same_set:
+        cur_set = set(current_names)
+        tgt_set = set(target_class_names)
+        if cur_set != tgt_set:
+            only_in_cur = sorted(list(cur_set - tgt_set))
+            only_in_tgt = sorted(list(tgt_set - cur_set))
+            print("错误: 类别集合不一致，已启用 --require-same-set：")
+            if only_in_cur:
+                print(f"  仅在当前集合中存在: {only_in_cur}")
+            if only_in_tgt:
+                print(f"  仅在目标集合中存在: {only_in_tgt}")
+            return False
+
+    # 构建映射: 旧class_id -> 新class_id
+    name_to_new = {n: i for i, n in enumerate(target_class_names)}
+    missing_old = [n for n in current_names if n not in name_to_new]
+    if missing_old:
+        msg = f"警告: 以下旧类别在目标列表中不存在: {missing_old}"
+        if strict:
+            print("错误(严格模式):", msg)
+            return False
+        else:
+            print(msg + "，这些类别的标注将被丢弃")
+
+    old_to_new = {}
+    for old_id, name in enumerate(current_names):
+        if name in name_to_new:
+            old_to_new[old_id] = name_to_new[name]
+        else:
+            old_to_new[old_id] = None  # 丢弃
+
+    # 创建备份
+    if backup and not dry_run:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = f"{base_dir}_backup_before_reindex_{timestamp}"
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir)
+        shutil.copytree(base_dir, backup_dir)
+        print(f"✓ 已创建备份: {backup_dir}")
+
+    structure, _, _ = detect_dataset_structure(base_dir)
+    label_dirs = get_all_label_dirs(base_dir, structure)
+
+    updated_files = 0
+    dropped_annotations = 0
+    total_annotations = 0
+
+    for labels_dir in label_dirs:
+        if structure == 'mixed':
+            label_files = [f for f in os.listdir(labels_dir)
+                          if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']]
+        else:
+            label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+
+        for label_file in label_files:
+            label_path = os.path.join(labels_dir, label_file)
+            try:
+                new_lines = []
+                with open(label_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        s = line.strip()
+                        if not s:
+                            continue
+                        parts = s.split()
+                        try:
+                            old_id = int(parts[0])
+                        except Exception:
+                            continue
+                        total_annotations += 1
+                        new_id = old_to_new.get(old_id, None)
+                        if new_id is None:
+                            dropped_annotations += 1
+                            continue
+                        parts[0] = str(new_id)
+                        new_lines.append(' '.join(parts))
+
+                if not dry_run:
+                    with open(label_path, 'w', encoding='utf-8') as f:
+                        for ln in new_lines:
+                            f.write(ln + '\n')
+                updated_files += 1
+            except Exception as e:
+                print(f"错误: 无法处理标签文件 {label_path}: {e}")
+
+    # 更新类别文件
+    if not dry_run:
+        for class_file in class_files:
+            class_file_path = os.path.join(base_dir, class_file)
+            write_class_names(class_file_path, target_class_names)
+            print(f"✓ 已更新类别文件: {class_file}")
+
+    print("\n重排完成(预览)" if dry_run else "\n重排完成")
+    print(f"处理的标签文件: {updated_files}")
+    print(f"总标注: {total_annotations}")
+    if missing_old:
+        print(f"丢弃的标注(因类别缺失): {dropped_annotations}")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="YOLO数据集类别管理工具")
     parser.add_argument("--dataset_dir", "-d", required=True,
@@ -517,6 +640,17 @@ def main():
                                help="演习模式，只显示将要删除的备份，不执行实际删除")
     cleanup_parser.add_argument("--execute", action="store_true",
                                help="执行实际删除操作")
+
+    # 重排命令
+    reindex_parser = subparsers.add_parser('reindex', help='根据目标类别顺序重排所有标签中的类别ID，并更新类别文件')
+    reindex_group = reindex_parser.add_mutually_exclusive_group(required=True)
+    reindex_group.add_argument("--to-file", dest="to_file", help="目标类别文件路径 (classes.txt 或 *.yaml)，其顺序将作为新类别顺序")
+    reindex_group.add_argument("--to-classes", dest="to_classes", nargs='+', help="直接提供目标类别顺序列表，例如: --to-classes arco_0 arco_1 arco_2 ...")
+    reindex_parser.add_argument("--strict", action="store_true", help="严格模式: 旧类别若不在目标列表中则报错终止")
+    reindex_parser.add_argument("--require-same-set", action="store_true", help="强制要求当前与目标类别集合完全一致，否则中止")
+    reindex_parser.add_argument("--no-backup", action="store_true", help="不创建备份")
+    reindex_parser.add_argument("--dry-run", action="store_true", help="演习模式，仅预览更改，不写回磁盘 (默认: 预览)")
+    reindex_parser.add_argument("--execute", action="store_true", help="执行实际重排(与 --dry-run 互斥)")
     
     args = parser.parse_args()
     
@@ -558,6 +692,35 @@ def main():
         
         dry_run = args.dry_run or not args.execute
         cleanup_backups(args.dataset_dir, args.keep, dry_run)
+
+    elif args.command == 'reindex':
+        if args.dry_run and args.execute:
+            print("错误: --dry-run 和 --execute 不能同时使用")
+            return
+        dry_run = args.dry_run or not args.execute
+        backup = not args.no_backup
+
+        # 读取目标类别
+        if args.to_file:
+            if not os.path.exists(args.to_file):
+                print(f"错误: 目标类别文件不存在: {args.to_file}")
+                return
+            target_names = read_class_names(args.to_file)
+        else:
+            target_names = args.to_classes or []
+
+        if not target_names:
+            print("错误: 目标类别列表为空")
+            return
+
+        reindex_classes(
+            args.dataset_dir,
+            target_names,
+            strict=args.strict,
+            backup=backup,
+            dry_run=dry_run,
+            require_same_set=args.require_same_set,
+        )
 
 
 if __name__ == "__main__":
