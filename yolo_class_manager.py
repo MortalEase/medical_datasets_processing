@@ -324,6 +324,330 @@ def show_dataset_info(base_dir):
             print(f"  类别 {class_id} ({class_name}): {count} 次 ({percentage:.1f}%)")
 
 
+def _images_dir_for_labels(base_dir: str, labels_dir: str, structure: str) -> str:
+    """根据结构推导与 labels_dir 对应的 images 目录。"""
+    if structure == 'standard':
+        return os.path.join(base_dir, 'images')
+    if structure == 'format1':
+        # base/train/labels -> base/train/images
+        parent = os.path.dirname(labels_dir)  # .../train
+        return os.path.join(parent, 'images')
+    if structure == 'format2':
+        # base/labels/split -> base/images/split
+        split = os.path.basename(labels_dir)
+        return os.path.join(base_dir, 'images', split)
+    # mixed: 与标签同目录
+    return labels_dir
+
+
+def _find_image_path(images_dir: str, stem: str) -> str | None:
+    from utils.yolo_utils import IMG_EXTS
+    for ext in IMG_EXTS:
+        p = os.path.join(images_dir, stem + ext)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _load_class_names_from_dataset(base_dir: str) -> list[str]:
+    files = list_possible_class_files(base_dir)
+    if not files:
+        return []
+    return read_class_names(os.path.join(base_dir, files[0]))
+
+
+def _display_class_distribution(class_usage: dict[int, int], class_names: list[str]) -> None:
+    total = sum(class_usage.values()) or 1
+    print("\n📈 类别分布:")
+    for cid, cnt in sorted(class_usage.items(), key=lambda x: x[1], reverse=True):
+        name = class_names[cid] if cid < len(class_names) else f"Class_{cid}"
+        pct = cnt * 100.0 / total
+        print(f"  {cid}: {name} -> {cnt} ({pct:.1f}%)")
+
+
+def _determine_classes_to_remove_by_strategy(strategy: dict, class_usage: dict[int, int]) -> list[int]:
+    if not strategy:
+        return []
+    total = sum(class_usage.values())
+    keys = set(class_usage.keys())
+    t = strategy.get('type')
+    if t == 'min_samples':
+        thr = int(strategy['min_samples'])
+        return [cid for cid, cnt in class_usage.items() if cnt < thr]
+    if t == 'min_percentage':
+        thr = float(strategy['min_percentage'])
+        min_cnt = total * thr / 100.0
+        return [cid for cid, cnt in class_usage.items() if cnt < min_cnt]
+    if t == 'keep':
+        keep = set(strategy['keep'])
+        return [cid for cid in keys if cid not in keep]
+    if t == 'remove':
+        return list(set(strategy['remove']))
+    if t == 'top_n':
+        n = int(strategy['top_n'])
+        sorted_c = sorted(class_usage.items(), key=lambda x: x[1], reverse=True)
+        keep = {cid for cid, _ in sorted_c[:n]}
+        return [cid for cid in keys if cid not in keep]
+    if t == 'id_range':
+        lo, hi = strategy['id_range']
+        return [cid for cid in keys if lo <= cid <= hi]
+    if t == 'combo':
+        ms = int(strategy['min_samples'])
+        mp = float(strategy['min_percentage'])
+        min_cnt = total * mp / 100.0
+        return [cid for cid, cnt in class_usage.items() if cnt < ms or cnt < min_cnt]
+    return []
+
+
+def _interactive_clean_strategy(class_usage: dict[int, int], class_names: list[str]) -> dict | None:
+    print("\n====== 选择清理策略 ======")
+    print("1. 按最小样本数清理 (删除样本数少于阈值的类别)")
+    print("2. 按百分比清理 (删除占比少于阈值的类别)")
+    print("3. 手动选择要保留的类别")
+    print("4. 手动选择要删除的类别")
+    print("5. 自定义清理规则")
+    print("0. 取消")
+    while True:
+        try:
+            ch = input("请输入选择 (0-5): ").strip()
+        except KeyboardInterrupt:
+            return None
+        if ch in {'0', '1', '2', '3', '4', '5'}:
+            break
+        print("无效选择，请重试")
+    if ch == '0':
+        return None
+    if ch == '1':
+        v = int(input("最小样本数阈值: ").strip())
+        return {'type': 'min_samples', 'min_samples': v}
+    if ch == '2':
+        v = float(input("最小百分比阈值(如 1.0): ").strip())
+        return {'type': 'min_percentage', 'min_percentage': v}
+    if ch == '3':
+        print("当前类别:")
+        for cid in sorted(class_usage.keys()):
+            name = class_names[cid] if cid < len(class_names) else f"Class_{cid}"
+            print(f"  {cid}: {name} ({class_usage[cid]})")
+        s = input("输入要保留的类别ID(逗号分隔): ").strip()
+        keep = [int(x) for x in s.split(',') if x.strip()]
+        return {'type': 'keep', 'keep': keep}
+    if ch == '4':
+        print("当前类别:")
+        for cid in sorted(class_usage.keys()):
+            name = class_names[cid] if cid < len(class_names) else f"Class_{cid}"
+            print(f"  {cid}: {name} ({class_usage[cid]})")
+        s = input("输入要删除的类别ID(逗号分隔): ").strip()
+        rem = [int(x) for x in s.split(',') if x.strip()]
+        return {'type': 'remove', 'remove': rem}
+    if ch == '5':
+        print("1. 组合条件 (最小样本数 AND 最小百分比)")
+        print("2. 保留前N个最多样本的类别")
+        print("3. 删除特定ID范围")
+        sc = input("选择(1-3): ").strip()
+        if sc == '1':
+            ms = int(input("最小样本数: ").strip())
+            mp = float(input("最小百分比: ").strip())
+            return {'type': 'combo', 'min_samples': ms, 'min_percentage': mp}
+        if sc == '2':
+            n = int(input("保留前N个: ").strip())
+            return {'type': 'top_n', 'top_n': n}
+        if sc == '3':
+            lo = int(input("最小ID: ").strip())
+            hi = int(input("最大ID: ").strip())
+            return {'type': 'id_range', 'id_range': (lo, hi)}
+    return None
+
+
+def _generate_clean_report(base_dir: str, class_usage: dict[int, int], class_names: list[str], strategy: dict,
+                           classes_removed: list[int], removed_files: list[str], updated_files: list[str]) -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report = os.path.join(base_dir, f"cleaning_report_{ts}.md")
+    total_ann = sum(class_usage.values()) or 1
+    with open(report, 'w', encoding='utf-8') as f:
+        f.write("# YOLO数据集清理报告\n\n")
+        f.write(f"**清理日期**: {ts}\n")
+        f.write(f"**数据集路径**: `{base_dir}`\n\n")
+        f.write("## 清理前统计\n\n")
+        f.write(f"- **总标注数**: {total_ann}\n")
+        f.write(f"- **类别数**: {len(class_usage)}\n\n")
+        f.write("### 原始类别分布\n\n")
+        f.write("| 类别ID | 类别名称 | 标注数 | 占比 |\n")
+        f.write("|--------|----------|--------|------|\n")
+        for cid, cnt in sorted(class_usage.items()):
+            name = class_names[cid] if cid < len(class_names) else f"Class_{cid}"
+            pct = cnt * 100.0 / total_ann
+            f.write(f"| {cid} | {name} | {cnt} | {pct:.1f}% |\n")
+        f.write("\n## 清理策略\n\n")
+        f.write(f"{strategy}\n")
+        if classes_removed:
+            f.write("\n## 清理结果\n\n")
+            f.write(f"- **删除类别数**: {len(classes_removed)}\n")
+            f.write(f"- **删除文件数**: {len(removed_files)}\n")
+            f.write(f"- **更新文件数**: {len(updated_files)}\n")
+    print(f"📋 生成清理报告: {report}")
+    return report
+
+
+def clean_dataset(base_dir: str, *,
+                  min_samples: int | None = None,
+                  min_percentage: float | None = None,
+                  keep_classes: list[int] | None = None,
+                  remove_classes: list[int] | None = None,
+                  top_n: int | None = None,
+                  id_range: tuple[int, int] | None = None,
+                  interactive: bool = False,
+                  class_file: str | None = None,
+                  backup: bool = True,
+                  dry_run: bool = True,
+                  assume_yes: bool = False) -> bool:
+    """融合清理功能：支持多策略删除类别并重映射ID，同时删除无标注图片，更新类名与YAML，并生成报告。"""
+    # 统计
+    class_usage, ds_class_names = analyze_dataset_classes(base_dir)
+    if class_usage is None:
+        return False
+    if class_file and os.path.exists(class_file):
+        override = read_class_names(class_file)
+        if override:
+            ds_class_names = override
+    print("\n🔍 数据集分析完成")
+    _display_class_distribution(class_usage, ds_class_names)
+
+    # 解析策略
+    strategy: dict | None = None
+    if interactive or all(v is None for v in [min_samples, min_percentage, keep_classes, remove_classes, top_n, id_range]):
+        strategy = _interactive_clean_strategy(class_usage, ds_class_names)
+        if strategy is None:
+            print("已取消")
+            return False
+    else:
+        if min_samples is not None:
+            strategy = {'type': 'min_samples', 'min_samples': min_samples}
+        elif min_percentage is not None:
+            strategy = {'type': 'min_percentage', 'min_percentage': min_percentage}
+        elif keep_classes is not None:
+            strategy = {'type': 'keep', 'keep': keep_classes}
+        elif remove_classes is not None:
+            strategy = {'type': 'remove', 'remove': remove_classes}
+        elif top_n is not None:
+            strategy = {'type': 'top_n', 'top_n': top_n}
+        elif id_range is not None:
+            strategy = {'type': 'id_range', 'id_range': id_range}
+
+    classes_to_remove = _determine_classes_to_remove_by_strategy(strategy, class_usage)
+    if not classes_to_remove:
+        print("✅ 没有需要删除的类别")
+        return True
+
+    total = sum(class_usage.values()) or 1
+    removed_samples = sum(class_usage.get(cid, 0) for cid in classes_to_remove)
+    kept_classes = sorted([cid for cid in class_usage.keys() if cid not in set(classes_to_remove)])
+    kept_samples = total - removed_samples
+
+    print("\n====== 清理预览 ======")
+    print(f"❌ 将删除的类别({len(classes_to_remove)}): {sorted(classes_to_remove)}  共 {removed_samples} 个标注({removed_samples*100.0/total:.1f}%)")
+    print(f"✅ 将保留的类别({len(kept_classes)}): {kept_classes}  共 {kept_samples} 个标注({kept_samples*100.0/total:.1f}%)")
+
+    if dry_run:
+        print("\n[预览模式] 未进行实际写入。使用 --execute 执行。")
+        return True
+
+    if not assume_yes:
+        ans = input("是否确认执行清理? (y/n): ").strip().lower()
+        if ans not in {'y', 'yes'}:
+            print("已取消")
+            return False
+
+    # 备份
+    if backup:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = f"{base_dir}_backup_before_clean_{timestamp}"
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir)
+        shutil.copytree(base_dir, backup_dir)
+        print(f"✓ 已创建备份: {backup_dir}")
+
+    structure, _, _ = detect_yolo_structure(base_dir)
+    label_dirs = yolo_label_dirs(base_dir, structure)
+
+    # 构建映射
+    id_mapping = {old_id: new_id for new_id, old_id in enumerate(kept_classes)}
+
+    removed_files: list[str] = []
+    updated_files: list[str] = []
+
+    for labels_dir in label_dirs:
+        images_dir = _images_dir_for_labels(base_dir, labels_dir, structure)
+        for label_file in iter_label_files(labels_dir, structure):
+            label_path = os.path.join(labels_dir, label_file)
+            try:
+                new_lines = []
+                with open(label_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        s = line.strip()
+                        if not s:
+                            continue
+                        parts = s.split()
+                        if len(parts) < 5:
+                            continue
+                        try:
+                            cid = int(float(parts[0]))
+                        except Exception:
+                            continue
+                        if cid in classes_to_remove:
+                            continue
+                        parts[0] = str(id_mapping[cid])
+                        new_lines.append(' '.join(parts))
+
+                if not new_lines:
+                    # 删除标签文件和对应图片
+                    try:
+                        os.remove(label_path)
+                        removed_files.append(label_path)
+                    except Exception:
+                        pass
+                    stem = os.path.splitext(os.path.basename(label_path))[0]
+                    img_path = _find_image_path(images_dir, stem)
+                    if img_path and os.path.exists(img_path):
+                        try:
+                            os.remove(img_path)
+                            removed_files.append(img_path)
+                        except Exception:
+                            pass
+                else:
+                    with open(label_path, 'w', encoding='utf-8') as f:
+                        for ln in new_lines:
+                            f.write(ln + '\n')
+                    updated_files.append(label_path)
+            except Exception as e:
+                print(f"错误: 无法处理标签文件 {label_path}: {e}")
+
+    # 更新类别/配置文件
+    new_names: list[str] = []
+    if ds_class_names:
+        for new_id in range(len(kept_classes)):
+            old_id = kept_classes[new_id]
+            name = ds_class_names[old_id] if old_id < len(ds_class_names) else f"Class_{old_id}"
+            new_names.append(name)
+    else:
+        new_names = [f"Class_{i}" for i in range(len(kept_classes))]
+
+    class_files = list_possible_class_files(base_dir)
+    for cf in class_files:
+        try:
+            write_class_names(os.path.join(base_dir, cf), new_names)
+            print(f"✓ 已更新类别/配置文件: {cf}")
+        except Exception as e:
+            print(f"警告: 更新 {cf} 失败: {e}")
+
+    # 报告
+    _generate_clean_report(base_dir, class_usage, ds_class_names, strategy, classes_to_remove, removed_files, updated_files)
+
+    print("\n📊 清理完成")
+    print(f"  🗑️ 删除文件数: {len(removed_files)}")
+    print(f"  ✏️ 更新文件数: {len(updated_files)}")
+    return True
+
+
 def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry_run=True, require_same_set=False):
     """根据目标类别顺序重排数据集中所有标签文件的类别ID，并更新类别文件。
 
@@ -484,6 +808,22 @@ def main():
     reindex_parser.add_argument("--no-backup", action="store_true", help="不创建备份")
     reindex_parser.add_argument("--dry-run", action="store_true", help="演习模式，仅预览更改，不写回磁盘 (默认: 预览)")
     reindex_parser.add_argument("--execute", action="store_true", help="执行实际重排(与 --dry-run 互斥)")
+
+    # 清理命令（融合 yolo_label_cleaner 功能）
+    clean_parser = subparsers.add_parser('clean', help='按策略清理类别与样本，重映射ID，删除无标注图片，并更新类名/YAML/报告')
+    strategy_group = clean_parser.add_mutually_exclusive_group(required=False)
+    strategy_group.add_argument("--min-samples", type=int, help="删除样本数少于阈值的类别")
+    strategy_group.add_argument("--min-percentage", type=float, help="删除占比少于阈值(%)的类别")
+    clean_parser.add_argument("--keep-classes", nargs='+', type=int, help="手动指定保留的类别ID列表")
+    clean_parser.add_argument("--remove-classes", nargs='+', type=int, help="手动指定删除的类别ID列表")
+    clean_parser.add_argument("--top-n", type=int, help="仅保留前N个最多样本的类别")
+    clean_parser.add_argument("--remove-id-range", nargs=2, type=int, metavar=('MIN', 'MAX'), help="删除特定ID范围的类别")
+    clean_parser.add_argument("--interactive", action="store_true", help="交互式选择策略")
+    clean_parser.add_argument("--class-file", help="指定外部类别文件用于名称映射(可选)")
+    clean_parser.add_argument("--no-backup", action="store_true", help="不创建备份")
+    clean_parser.add_argument("--dry-run", action="store_true", help="预览模式(默认预览，使用 --execute 执行)")
+    clean_parser.add_argument("--execute", action="store_true", help="执行实际清理")
+    clean_parser.add_argument("--yes", action="store_true", help="无需确认直接执行")
     
     args = parser.parse_args()
     
@@ -553,6 +893,28 @@ def main():
             backup=backup,
             dry_run=dry_run,
             require_same_set=args.require_same_set,
+        )
+
+    elif args.command == 'clean':
+        if args.dry_run and args.execute:
+            print("错误: --dry-run 和 --execute 不能同时使用")
+            return
+        dry_run = args.dry_run or not args.execute
+        backup = not args.no_backup
+        id_range = tuple(args.remove_id_range) if args.remove_id_range else None
+        clean_dataset(
+            args.dataset_dir,
+            min_samples=args.min_samples,
+            min_percentage=args.min_percentage,
+            keep_classes=args.keep_classes,
+            remove_classes=args.remove_classes,
+            top_n=args.top_n,
+            id_range=id_range,
+            interactive=args.interactive,
+            class_file=args.class_file,
+            backup=backup,
+            dry_run=dry_run,
+            assume_yes=args.yes,
         )
 
 

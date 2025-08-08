@@ -106,6 +106,25 @@ python yolo_class_manager.py -d 数据集目录 reindex --to-classes classA clas
 
 # 要求当前与目标类别集合完全一致（否则中止）
 python yolo_class_manager.py -d 数据集目录 reindex --to-file data.yaml --require-same-set --execute
+
+# 按策略清理类别与样本（预览模式，默认）
+python yolo_class_manager.py -d 数据集目录 clean --min-samples 50 --dry-run
+
+# 实际执行并备份：删除占比低于2%的类别，自动重映射并删除变为空的图片
+python yolo_class_manager.py -d 数据集目录 clean --min-percentage 2.0 --execute
+
+# 手动指定保留/删除
+python yolo_class_manager.py -d 数据集目录 clean --keep-classes 0 1 2 --execute
+python yolo_class_manager.py -d 数据集目录 clean --remove-classes 5 6 --execute
+
+# 保留前N个最多样本的类别
+python yolo_class_manager.py -d 数据集目录 clean --top-n 10 --execute
+
+# 删除特定ID范围
+python yolo_class_manager.py -d 数据集目录 clean --remove-id-range 20 99 --execute
+
+# 交互式选择策略
+python yolo_class_manager.py -d 数据集目录 clean --interactive --execute
 ```
 
 **功能特点**：
@@ -116,6 +135,7 @@ python yolo_class_manager.py -d 数据集目录 reindex --to-file data.yaml --re
 - 🧹 **备份管理**: 智能清理旧备份，释放存储空间
 - 🔍 **智能检测**: 自动识别数据集结构和类别文件格式
 - ⚠️ **数据验证**: 验证操作前的数据完整性和有效性
+ - 🧹 **策略清理**: 新增 clean 子命令，支持按最小样本数/占比、手动保留/删除、前N、ID范围、组合条件等策略；删除空标签同步删除图片；更新 classes.txt/YAML；生成清理报告
 
 **使用示例**：
 ```bash
@@ -130,6 +150,12 @@ python yolo_class_manager.py -d "D:\datasets\medical_yolo" rename -r "arco_0:nor
 
 # 清理超过5个的旧备份
 python yolo_class_manager.py -d "D:\datasets\medical_yolo" cleanup --execute --keep 5
+
+# 策略清理(预览)
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" clean --min-samples 30
+
+# 策略清理(执行)
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" clean --min-percentage 1.5 --execute --yes
 ```
 
 **备份命名规则**：
@@ -180,32 +206,6 @@ python yolo_dataset_analyzer.py -d "/path/to/mixed/dataset" --stats
 python yolo_dataset_analyzer.py -d "./my_dataset"
 ```
 
-## yolo_label_cleaner.py
-YOLO数据集标签清理工具
-
-**支持的数据集格式**：
-- ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等
-- ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等
-
-```bash
-# 交互式清理（推荐）
-python yolo_label_cleaner.py 数据集根目录
-
-# 自动清理 - 删除少于50个样本的类别
-python yolo_label_cleaner.py 数据集根目录 --auto-clean min_samples:50
-
-# 自动清理 - 删除少于2%的类别
-python yolo_label_cleaner.py 数据集根目录 --auto-clean min_percentage:2.0
-
-# 不创建备份
-python yolo_label_cleaner.py 数据集根目录 --no-backup
-
-# 静默模式
-python yolo_label_cleaner.py 数据集根目录 --quiet
-
-# 指定类别文件
-python yolo_label_cleaner.py 数据集根目录 --class-file custom_classes.txt
-```
 
 ## yolo_dataset_viewer.py
 YOLO数据集交互式遍历查看器
@@ -346,14 +346,13 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 - **yolo_dataset_analyzer.py**: 支持格式一、格式二及混合结构
 - **yolo_dataset_split.py**: 输入简单结构(images/+labels/)，可输出格式一或格式二
 - **yolo_class_manager.py**: 支持标准结构、格式一、格式二及混合结构
-- **yolo_label_cleaner.py**: 支持格式一、格式二
 - **yolo_dataset_viewer.py**: 支持格式一、格式二
 - **yolo2coco.py**: 支持格式一、格式二
 
 ### 推荐工作流程
 1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集
 2. 使用 `yolo_class_manager.py info` 查看类别使用情况
-3. 使用 `yolo_class_manager.py delete/rename` 管理类别（如需要）
+3. 使用 `yolo_class_manager.py delete/rename/clean` 管理类别（如需要）
 4. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
 5. 使用 `yolo_dataset_analyzer.py` 验证划分结果（使用--stats参数）
 6. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
