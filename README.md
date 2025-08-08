@@ -360,3 +360,46 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 7. 使用 `yolo_class_manager.py cleanup` 定期清理备份文件
 
 使用 `-h` 或 `--help` 查看详细参数说明
+
+---
+
+## 日志输出说明
+
+本仓库的所有入口脚本已统一启用日志重定向。每次运行脚本时，标准输出与标准错误会同时：
+- 原样打印到控制台；
+- 复制写入到项目根目录下的 `logs/` 目录中的日志文件。
+
+日志文件命名：
+- `脚本名_YYYYMMDD_HHMMSS.log`，例如：`yolo_class_manager_20250808_143012.log`
+
+日志内容包含：
+- 脚本启动时间与完整命令行
+- 运行过程中的所有打印输出
+- 错误与异常堆栈（若有）
+
+查看与追踪（Windows PowerShell 示例）：
+
+```powershell
+# 查看最新日志文件列表
+Get-ChildItem .\logs -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10
+
+# 查看某个日志文件的末尾 50 行
+Get-Content .\logs\yolo_class_manager_20250808_143012.log -Tail 50
+
+# 实时追踪日志（类似 tail -f）
+Get-Content .\logs\yolo_dataset_split_20250808_150001.log -Wait
+```
+
+清理建议：
+
+```powershell
+# 仅保留最近 100 个日志，其余删除
+Get-ChildItem .\logs -File |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip 100 |
+  Remove-Item
+```
+
+高级定制：
+- 日志逻辑位于 `utils/logging_utils.py` 的 `tee_stdout_stderr`，默认输出到 `logs/` 目录；
+- 如需调整日志目录/命名规则或增加自动清理策略，可在该文件中扩展实现。
