@@ -3,6 +3,8 @@ import os
 import cv2
 import numpy as np
 from pathlib import Path
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 import SimpleITK as sitk
 from tqdm import tqdm
 import argparse

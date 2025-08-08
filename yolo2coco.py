@@ -4,6 +4,8 @@ import json
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 import argparse
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_dir', default='./dataset/valid',type=str, help="root path of images and labels, include ./images and ./labels and classes.txt")

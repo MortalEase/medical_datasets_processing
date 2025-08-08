@@ -4,6 +4,8 @@ import os
 import sys
 import cv2
 import argparse
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt

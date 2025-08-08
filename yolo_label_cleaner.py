@@ -7,6 +7,8 @@ from pathlib import Path
 import argparse
 from collections import Counter, defaultdict
 import yaml
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 
 # 设置中文字体
 import matplotlib.pyplot as plt

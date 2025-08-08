@@ -5,6 +5,8 @@ import yaml
 import random
 from prettytable import PrettyTable
 from utils.yolo_utils import get_image_extensions, detect_yolo_structure
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 
 
 def get_image_extensions_local():

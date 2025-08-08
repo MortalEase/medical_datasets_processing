@@ -6,6 +6,16 @@ import json
 import shutil
 import random
 import argparse
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import json
+import shutil
+import random
+import argparse
 from collections import defaultdict, Counter
 from pathlib import Path
 import numpy as np

@@ -2,6 +2,8 @@ import os
 import shutil
 import random
 import argparse
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 from collections import defaultdict
 from utils.yolo_utils import (
     get_image_extensions,

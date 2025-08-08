@@ -3,6 +3,8 @@ import shutil
 import argparse
 from collections import defaultdict
 from datetime import datetime
+from utils.logging_utils import tee_stdout_stderr
+_LOG_FILE = tee_stdout_stderr('logs')
 from utils.yolo_utils import (
     detect_yolo_structure,
     yolo_label_dirs,
