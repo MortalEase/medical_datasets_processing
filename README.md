@@ -402,7 +402,7 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 - 复制写入到项目根目录下的 `logs/` 目录中的日志文件。
 
 日志文件命名：
-- `脚本名_YYYYMMDD_HHMMSS.log`，例如：`yolo_class_manager_20250808_143012.log`
+- `YYYYMMDD_HHMMSS_脚本名.log`，例如：`20250808_143012_yolo_class_manager.log`
 
 日志内容包含：
 - 脚本启动时间与完整命令行
@@ -413,13 +413,13 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 
 ```powershell
 # 查看最新日志文件列表
-Get-ChildItem .\logs -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10
+Get-ChildItem .\logs -File | Sort-Object Name -Descending | Select-Object -First 10
 
 # 查看某个日志文件的末尾 50 行
-Get-Content .\logs\yolo_class_manager_20250808_143012.log -Tail 50
+Get-Content .\logs\20250808_143012_yolo_class_manager.log -Tail 50
 
 # 实时追踪日志（类似 tail -f）
-Get-Content .\logs\yolo_dataset_split_20250808_150001.log -Wait
+Get-Content .\logs\20250808_150001_yolo_dataset_split.log -Wait
 ```
 
 清理建议：

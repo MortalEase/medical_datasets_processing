@@ -48,7 +48,8 @@ def tee_stdout_stderr(log_dir: str | Path = 'logs', script_basename: Optional[st
         # Try to detect the caller script name; fallback to 'script'
         script_basename = Path(sys.argv[0]).stem or 'script'
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_path = base / f"{script_basename}_{ts}.log"
+    # 调整命名：时间戳在前，便于按名称排序: YYYYMMDD_HHMMSS_scriptname.log
+    log_path = base / f"{ts}_{script_basename}.log"
 
     # Open in text mode with utf-8 to support CN output
     f = open(log_path, 'w', encoding='utf-8', buffering=1)
