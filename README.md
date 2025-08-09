@@ -267,6 +267,52 @@ python yolo2coco.py --root_dir 数据集根目录 --save_path 输出json文件�
 python convert_medical_to_yolo.py -i 输入图像目录 -o 输出YOLO数据集目录 -m 元数据CSV文件路径
 ```
 
+## voc2yolo.py
+VOC (Pascal VOC XML) 转 YOLO 标注转换工具
+
+**输入目录假定**：
+- 默认查找：`输入根/Annotations/*.xml` 与 `输入根/JPEGImages/` 中的同名图片；
+- 若结构不同，可用 `--xml-dir` / `--img-dir` 明确指定；
+- 也可直接将 `-i` 指向只包含 XML 的目录（会在该目录内搜索 *.xml）。
+
+**输出结构支持**：
+- `standard` (默认)：`output/images/ + output/labels/`
+- `mixed`：`output/` 根目录下图片与标签混合存放（与仓库内其它脚本的 mixed 概念保持一致）
+
+**类别来源顺序**：
+1. 若提供 `--classes-file` (txt 或 yaml) 则优先使用；
+2. 否则自动扫描全部 XML 中出现的 `<object><name>` 顺序去重；
+3. 输出自动写入 `classes.txt` 或使用 `--save-yaml` 生成 `data.yaml`。
+
+**关键参数**：
+```bash
+python voc2yolo.py -i VOC_ROOT -o YOLO_OUT
+python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --structure mixed
+python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --classes-file classes.txt --ignore-difficult
+python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --save-yaml --allow-new-classes
+```
+
+**常用选项说明**：
+- `--structure {standard,mixed}`: 选择输出结构
+- `--classes-file`: 预先存在的类别文件 (txt/yaml)
+- `--allow-new-classes`: XML 中出现未在类别文件里的新类别时自动追加
+- `--ignore-difficult`: 跳过 `difficult=1` 的目标
+- `--save-yaml`: 输出 `data.yaml`（包含 `nc` 与 `names`）
+- `--no-copy-images`: 只生成标签，不复制图片
+- `--image-exts`: 自定义查找图片的扩展（不含点），默认使用内置列表
+
+**功能特点**：
+- 🔄 支持 standard / mixed 两种 YOLO 输出结构
+- 🔍 自动收集或复用类别定义，支持动态追加
+- 🏷️ 保留原文件名，同名图片生成同名 `.txt`
+- ⚠️ 统计缺失图片数量（仍生成标签）
+- 🧩 兼容 classes.txt / data.yaml 输出
+- 🪵 统一日志输出（logs/ 下自动记录）
+
+**注意**：
+- VOC 坐标 (xmin,ymin,xmax,ymax) 采用直接归一化转换；若需严格 0.5 像素修正可在后续自定义脚本中再处理。
+- 若同名图片不存在，仅报告警告并继续（便于先批量生成标签）。
+
 ---
 
 ## COCO数据集工具
