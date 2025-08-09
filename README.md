@@ -107,24 +107,11 @@ python yolo_class_manager.py -d 数据集目录 reindex --to-classes classA clas
 # 要求当前与目标类别集合完全一致（否则中止）
 python yolo_class_manager.py -d 数据集目录 reindex --to-file data.yaml --require-same-set --execute
 
-# 按策略清理类别与样本（预览模式，默认）
-python yolo_class_manager.py -d 数据集目录 clean --min-samples 50 --dry-run
+# 按最小样本数阈值删除类别 (预览)
+python yolo_class_manager.py -d 数据集目录 delete -c 5 6 --min-samples 40 --dry-run
 
-# 实际执行并备份：删除占比低于2%的类别，自动重映射并删除变为空的图片
-python yolo_class_manager.py -d 数据集目录 clean --min-percentage 2.0 --execute
-
-# 手动指定保留/删除
-python yolo_class_manager.py -d 数据集目录 clean --keep-classes 0 1 2 --execute
-python yolo_class_manager.py -d 数据集目录 clean --remove-classes 5 6 --execute
-
-# 保留前N个最多样本的类别
-python yolo_class_manager.py -d 数据集目录 clean --top-n 10 --execute
-
-# 删除特定ID范围
-python yolo_class_manager.py -d 数据集目录 clean --remove-id-range 20 99 --execute
-
-# 交互式选择策略
-python yolo_class_manager.py -d 数据集目录 clean --interactive --execute
+# 按最小占比删除类别 (执行)
+python yolo_class_manager.py -d 数据集目录 delete --min-percentage 2.0 --execute --yes
 ```
 
 **功能特点**：
@@ -135,7 +122,7 @@ python yolo_class_manager.py -d 数据集目录 clean --interactive --execute
 - 🧹 **备份管理**: 智能清理旧备份，释放存储空间
 - 🔍 **智能检测**: 自动识别数据集结构和类别文件格式
 - ⚠️ **数据验证**: 验证操作前的数据完整性和有效性
- - 🧹 **策略清理**: 新增 clean 子命令，支持按最小样本数/占比、手动保留/删除、前N、ID范围、组合条件等策略；删除空标签同步删除图片；更新 classes.txt/YAML；生成清理报告
+ - 🎯 **阈值删除增强**: delete 命令支持最小样本数(--min-samples)与最小占比(--min-percentage)组合筛选，将阈值命中的类别与显式指定ID合并后统一删除并重新编号
 
 **使用示例**：
 ```bash
@@ -151,11 +138,11 @@ python yolo_class_manager.py -d "D:\datasets\medical_yolo" rename -r "arco_0:nor
 # 清理超过5个的旧备份
 python yolo_class_manager.py -d "D:\datasets\medical_yolo" cleanup --execute --keep 5
 
-# 策略清理(预览)
-python yolo_class_manager.py -d "D:\datasets\medical_yolo" clean --min-samples 30
+# 按最小样本数阈值删除 (预览)
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" delete --min-samples 30 --dry-run
 
-# 策略清理(执行)
-python yolo_class_manager.py -d "D:\datasets\medical_yolo" clean --min-percentage 1.5 --execute --yes
+# 按最小占比删除 (执行)
+python yolo_class_manager.py -d "D:\datasets\medical_yolo" delete --min-percentage 1.5 --execute --yes
 ```
 
 **备份命名规则**：
@@ -352,7 +339,7 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 ### 推荐工作流程
 1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集
 2. 使用 `yolo_class_manager.py info` 查看类别使用情况
-3. 使用 `yolo_class_manager.py delete/rename/clean` 管理类别（如需要）
+3. 使用 `yolo_class_manager.py delete/rename` 管理类别（如需要）
 4. 使用 `yolo_dataset_split.py` 划分数据集（如需要）
 5. 使用 `yolo_dataset_analyzer.py` 验证划分结果（使用--stats参数）
 6. 使用 `yolo_dataset_viewer.py` 可视化检查数据集
