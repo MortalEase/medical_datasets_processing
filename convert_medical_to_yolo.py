@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""医学影像(MHA) -> YOLO 转换脚本
+
+读取元数据 CSV + MHA 图像, 生成 JPG 与 YOLO 标签 (单类结节示例)
+输出结构: format2 (images/, labels/)
+包含基础统计与转换进度
+"""
 import pandas as pd
 import os
 import cv2

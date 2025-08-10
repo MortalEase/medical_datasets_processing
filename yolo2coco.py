@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""YOLO -> COCO 转换脚本
+
+核心: 自动检测 YOLO 4 种结构 (format1/format2/standard/mixed) 并输出 COCO JSON
+扩展: 对 standard/mixed 可选 --split 触发二次分层划分 (调用 coco_dataset_split.py)
+默认: 未显式指定输出目录时按结构给出合理默认 JSON 存放路径
+"""
 import os
 import cv2
 import json

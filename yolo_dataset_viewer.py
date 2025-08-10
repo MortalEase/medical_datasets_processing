@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""YOLO 数据集交互式查看脚本
 
+功能: 按键浏览/随机/统计/筛选类别, 支持 format1/format2 结构
+显示: 通过 matplotlib overlays 绘制 YOLO 标注框
+"""
 import os
 import sys
 import cv2

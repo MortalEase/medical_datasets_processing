@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""YOLO 类别管理脚本
+
+功能: 删除/重命名/重排类别, 备份与清理, 阈值过滤, 类别使用统计
+支持: format1/format2/standard/mixed 自动结构检测
+"""
 import os
 import shutil
 import argparse

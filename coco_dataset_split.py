@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""COCO 数据集分层划分脚本
+
+输入: COCO 单一 annotations.json + images/ 目录
+输出: train/val(/test)/annotations.json + 对应 images 软/硬拷贝
+特性: 类别分层随机划分、比例与随机种子控制、类别统计输出
+"""
 
 import os
 import json
@@ -8,8 +14,6 @@ import random
 import argparse
 from utils.logging_utils import tee_stdout_stderr
 _LOG_FILE = tee_stdout_stderr('logs')
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import os
 import json

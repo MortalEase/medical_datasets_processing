@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""YOLO 数据集分析脚本
+
+检测结构(format1/format2/simple/mixed) 并统计图片/标注缺失、类别分布 (--stats)
+输出: 基本统计表 + 类别分布表 + 每分割缺失/冗余报告
+"""
 import os
 from pathlib import Path
 import argparse

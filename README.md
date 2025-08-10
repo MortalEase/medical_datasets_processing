@@ -1,5 +1,35 @@
 # 脚本命令行用法简明说明
 
+## 脚本索引 (快速导航)
+
+| 脚本 | 作用 | 主要输入结构 | 主要输出结构 | 关键参数 | 备注 |
+|------|------|-------------|-------------|---------|------|
+| yolo_dataset_analyzer.py | YOLO 数据集结构/缺失/统计分析 | format1/format2/standard/mixed | 终端输出 | -d --stats | 不修改数据 |
+| yolo_dataset_split.py | YOLO 划分 train/val/test | standard/mixed | format1 或 format2 | -i -o --train_ratio | 复制图片与标签 |
+| yolo_class_manager.py | YOLO 类别增删改/重排/清理 | format1/format2/standard/mixed | 就地修改 | delete/rename/reindex | 自动备份 |
+| yolo_dataset_viewer.py | 可视化查看/筛选/统计 | format1/format2 | 无写出 | -d --filter-classes | Matplotlib GUI |
+| yolo2coco.py | YOLO -> COCO 转换(+可分层划分) | format1/format2/standard/mixed | COCO JSON | -d -o --split | standard/mixed 可再划分 |
+| coco_dataset_split.py | COCO 分层再划分 | COCO 单文件 | 多分割 COCO | -i -o --train_ratio | 类别平衡抽样 |
+| coco_dataset_analyzer.py | COCO JSON 多分割统计 | COCO (annotations/*.json) | 终端输出 | -d --stats | 图片存在性检查 |
+| voc2yolo.py | VOC XML -> YOLO | VOC Annotations + JPEGImages | YOLO standard/mixed | -i -o --structure | 可生成 data.yaml |
+| convert_medical_to_yolo.py | MHA 医学图像转换 | MHA + metadata.csv | YOLO format2 | -i -o -m | 单类示例 |
+
+> 统一日志: 所有脚本默认写 logs/ 时间戳日志；统一参数: 输出目录推荐使用 --output_dir / -o, 数据集根目录使用 -d/--dataset_dir。
+
+## 推荐工作流
+
+1. 初始数据健康检查: `yolo_dataset_analyzer.py -d ... --stats`
+2. 类别清理与规范: `yolo_class_manager.py delete/rename/reindex`
+3. 数据划分 (若原始未分): `yolo_dataset_split.py -i raw -o split --train_ratio ...`
+4. 视觉抽样验证: `yolo_dataset_viewer.py -d split --filter-classes ...`
+5. 需要 COCO 训练/评估: `yolo2coco.py -d split -o coco_dir`
+6. 需要重新比例或分层: `coco_dataset_split.py -i coco_dir -o coco_split ...`
+7. COCO 成品统计核对: `coco_dataset_analyzer.py -d coco_split --stats`
+
+> 医学影像 (MHA) 场景: 先 `convert_medical_to_yolo.py` 生成 YOLO，再并入上面流程。
+
+---
+
 ## YOLO数据集格式说明
 
 YOLO数据集支持以下两种主要组织形式：

@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""YOLO 数据集划分脚本
+
+输入: standard(images/+labels/) 或 mixed(同目录混合) 结构
+输出: 可选 format1(train/val/test 子目录) 或 format2(images/train, labels/train)
+特性: 支持 2/3 集合比例、随机种子、类别文件复制与统计报告
+"""
 import os
 import shutil
 import random

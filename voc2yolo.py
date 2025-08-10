@@ -1,23 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""VOC (Pascal VOC XML) -> YOLO 标注转换工具
+"""VOC (Pascal VOC XML) -> YOLO 转换脚本
 
-支持将典型 VOC 目录下的 XML 标注文件转换为 YOLO txt 标注，输出为：
-- standard 结构: output/images/, output/labels/
-- mixed 结构: output/ 目录下图片与 txt 混合（不再额外分 labels/）
-
-类别来源策略：
-1) 优先使用 --classes-file 指定的类别文件 (txt 或 yaml)
-2) 未指定时自动扫描全部 XML 中出现的 object/name，按出现顺序去重
-3) 默认将生成的类别文件写入 output/classes.txt（或 data.yaml 若使用 --save-yaml）
-
-示例：
-    python voc2yolo.py -i VOC_ROOT -o YOLO_OUT
-    python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --structure mixed
-    python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --classes-file classes.txt --ignore-difficult
-    python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --save-yaml --allow-new-classes
-
-注意：脚本会复制图片文件 (常见扩展) 并为每个 XML 生成同名 .txt。未找到匹配图片将发出警告。
+输出: standard(images/ + labels/) 或 mixed(同目录混放)
+类别: 自动聚合 object/name 或 --classes-file; 可生成 classes.txt / data.yaml
 """
 from __future__ import annotations
 
