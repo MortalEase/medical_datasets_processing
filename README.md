@@ -249,13 +249,63 @@ python yolo_dataset_viewer.py -d "D:\datasets\gugutoudata" --filter-classes 0
 ## yolo2coco.py
 YOLO转COCO格式转换工具
 
-**支持的数据集格式**：
-- ✅ 格式一：`dataset/train/images/ + dataset/train/labels/` 等
-- ✅ 格式二：`dataset/images/train/ + dataset/labels/train/` 等
+**支持的输入结构**：
+- ✅ 格式一 (format1): `dataset/train/images/ + dataset/train/labels/` 等 (可存在 train/val/test 任意子集)
+- ✅ 格式二 (format2): `dataset/images/train/ + dataset/labels/train/` 等
+- ✅ 标准结构 (standard): `dataset/images/ + dataset/labels/`
+- ✅ 混合结构 (mixed): 图片与标签 `.txt` 混在同一目录
 
+**核心特性**：
+- 自动检测数据集结构 (format1 / format2 / standard / mixed)
+- 已带分割的结构直接输出多个 JSON (train.json / val.json / test.json)
+- 单一结构(standard/mixed)可直接输出单文件或使用 `--split` 触发二次 COCO 分层划分
+- `--split` 时内部先转为临时 COCO，再调用仓库现有 `coco_dataset_split.py` 完成按类别分层划分
+- 支持缺失标签图片（会保留 image 条目不生成 annotation）
+- 类别优先读取 `classes.txt/obj.names/names.txt`，未找到则从标签动态扩展
+
+**命令行**：
 ```bash
-python yolo2coco.py --root_dir 数据集根目录 --save_path 输出json文件路径
-# 可选参数：--random_split (随机划分) --split_by_file (按文件划分)
+# 1) 多分割 YOLO 结构 (格式一 / 格式二) -> 直接输出各自 JSON
+python yolo2coco.py -d path/to/format1_dataset -o output_coco_dir
+
+# 2) 标准结构 / 混合结构 -> 输出单一 COCO 文件
+python yolo2coco.py -d path/to/standard_dataset -o coco.json
+python yolo2coco.py -d path/to/mixed_dataset -o out_dir          # 将生成 out_dir/annotations.json
+
+# 3) 标准 / 混合结构并需要按比例再划分 (内部调用 coco_dataset_split.py)
+python yolo2coco.py -d path/to/standard_dataset -o CocoSplitDir --split \
+    --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
+
+# 4) 自定义随机种子 (影响后续分层划分的随机性)
+python yolo2coco.py -d path/to/mixed_dataset -o CocoSplitDir --split --seed 2024
+```
+
+**参数说明**：
+- `-d, --dataset_dir`  数据集根目录 (必填)
+- `-o, --output`       输出: 
+  - 若输入为格式一/二: 目录, 生成 train.json/val.json/test.json (存在的分割才生成)
+  - 若输入为 standard/mixed 且不 `--split`: 
+    * 以 .json 结尾 => 直接生成该文件
+    * 否则视为目录 => 生成 `目录/annotations.json`
+  - 若使用 `--split`: 视为最终划分输出目录
+- `--split`            对 standard / mixed 结构执行 COCO 分层划分
+- `--train_ratio` `--val_ratio` `--test_ratio`  划分比例 (默认 0.8/0.1/0.1, 需和为1.0)
+- `--seed`             随机种子 (传递给划分脚本)
+
+**输出结果**：
+- 已分割 YOLO 结构: `output/train.json` 等
+- 单文件: `coco.json` 或 `out_dir/annotations.json`
+- 分层划分: `CocoSplitDir/train/annotations.json` 等 (由 `coco_dataset_split.py` 生成)
+
+**注意**：
+- 旧版本参数 `--root_dir --save_path --random_split --split_by_file` 已废弃
+- 若类别文件缺失且标签中出现超出当前类别数的ID，会自动追加占位类别 `class_N`
+- `--split` 仅在输入为 standard / mixed 时生效；格式一/二自带分割不再重复划分
+
+**快速验证**：
+```bash
+python yolo2coco.py -d sample_yolo -o tmp.json
+type tmp.json | more   # Windows 查看开头内容
 ```
 
 ## convert_medical_to_yolo.py
@@ -376,11 +426,11 @@ python clean_gynecology_dataset.py 数据集根目录 --min_samples 10
 ## 工具说明
 
 ### YOLO数据集格式支持情况
-- **yolo_dataset_analyzer.py**: 支持格式一、格式二及混合结构
-- **yolo_dataset_split.py**: 输入简单结构(images/+labels/)，可输出格式一或格式二
+- **yolo_dataset_analyzer.py**: 支持格式一、格式二、简单(standard)、混合结构
+- **yolo_dataset_split.py**: 输入简单结构(images/+labels/ 或混合)可输出格式一或格式二
 - **yolo_class_manager.py**: 支持标准结构、格式一、格式二及混合结构
 - **yolo_dataset_viewer.py**: 支持格式一、格式二
-- **yolo2coco.py**: 支持格式一、格式二
+- **yolo2coco.py**: 支持格式一、格式二、标准(standard)、混合(mixed)，并可选 `--split` 调用 COCO 分层划分
 
 ### 推荐工作流程
 1. 使用 `yolo_dataset_analyzer.py` 分析现有数据集

@@ -1,157 +1,312 @@
 import os
 import cv2
 import json
-from tqdm import tqdm
-from sklearn.model_selection import train_test_split
 import argparse
+import tempfile
+import subprocess
+from pathlib import Path
+from tqdm import tqdm
 from utils.logging_utils import tee_stdout_stderr
 _LOG_FILE = tee_stdout_stderr('logs')
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--root_dir', default='./dataset/valid',type=str, help="root path of images and labels, include ./images and ./labels and classes.txt")
-parser.add_argument('--save_path', type=str,default='./valid.json', help="if not split the dataset, give a path to a json file")
-parser.add_argument('--random_split', action='store_true', help="random split the dataset, default ratio is 8:1:1")
-parser.add_argument('--split_by_file', action='store_true', help="define how to split the dataset, include ./train.txt ./val.txt ./test.txt ")
-
-arg = parser.parse_args()
-
-def train_test_val_split_random(img_paths,ratio_train=0.8,ratio_test=0.1,ratio_val=0.1):
-    # 这里可以修改数据集划分的比例。
-    assert int(ratio_train+ratio_test+ratio_val) == 1
-    train_img, middle_img = train_test_split(img_paths,test_size=1-ratio_train, random_state=233)
-    ratio=ratio_val/(1-ratio_train)
-    val_img, test_img  =train_test_split(middle_img,test_size=ratio, random_state=233)
-    print("NUMS of train:val:test = {}:{}:{}".format(len(train_img), len(val_img), len(test_img)))
-    return train_img, val_img, test_img
-
-def train_test_val_split_by_files(img_paths, root_dir):
-    # 根据文件 train.txt, val.txt, test.txt（里面写的都是对应集合的图片名字） 来定义训练集、验证集和测试集
-    phases = ['train', 'val', 'test']
-    img_split = []
-    for p in phases:
-        define_path = os.path.join(root_dir, f'{p}.txt')
-        print(f'Read {p} dataset definition from {define_path}')
-        assert os.path.exists(define_path)
-        with open(define_path, 'r') as f:
-            img_paths = f.readlines()
-            # img_paths = [os.path.split(img_path.strip())[1] for img_path in img_paths]  # NOTE 取消这句备注可以读取绝对地址。
-            img_split.append(img_paths)
-    return img_split[0], img_split[1], img_split[2]
+IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp']
 
 
-def yolo2coco(arg):
-    root_path = arg.root_dir
-    print("Loading data from ",root_path)
+def detect_structure(root_dir: str):
+    """检测数据集结构类型并返回结构标识与可遍历的 (split, images_dir, labels_dir) 列表。
 
-    assert os.path.exists(root_path)
-    originLabelsDir = os.path.join(root_path, 'labels')                                        
-    originImagesDir = os.path.join(root_path, 'images')
-    with open(os.path.join(root_path, 'classes.txt')) as f:
-        classes = f.read().strip().split()
-    # images dir name
-    indexes = os.listdir(originImagesDir)
+    返回:
+        structure(str): format1 | format2 | standard | mixed | unknown
+        paths(list[tuple]): [(split_name, images_dir, labels_dir), ...]
+    """
+    root = Path(root_dir)
 
-    if arg.random_split or arg.split_by_file:
-        # 用于保存所有数据的图片信息和标注信息
-        train_dataset = {'categories': [], 'annotations': [], 'images': []}
-        val_dataset = {'categories': [], 'annotations': [], 'images': []}
-        test_dataset = {'categories': [], 'annotations': [], 'images': []}
+    # ---- 格式一: train/images, train/labels ----
+    splits_found = []
+    for sp in ['train', 'val', 'test']:
+        if (root / sp / 'images').exists() and (root / sp / 'labels').exists():
+            splits_found.append(sp)
+    if splits_found:
+        paths = [(sp, str(root / sp / 'images'), str(root / sp / 'labels')) for sp in splits_found]
+        return 'format1', paths
 
-        # 建立类别标签和数字id的对应关系, 类别id从0开始。
-        for i, cls in enumerate(classes, 0):
-            train_dataset['categories'].append({'id': i, 'name': cls, 'supercategory': 'mark'})
-            val_dataset['categories'].append({'id': i, 'name': cls, 'supercategory': 'mark'})
-            test_dataset['categories'].append({'id': i, 'name': cls, 'supercategory': 'mark'})
-            
-        if arg.random_split:
-            print("spliting mode: random split")
-            train_img, val_img, test_img = train_test_val_split_random(indexes,0.8,0.1,0.1)
-        elif arg.split_by_file:
-            print("spliting mode: split by files")
-            train_img, val_img, test_img = train_test_val_split_by_files(indexes, root_path)
-    else:
-        dataset = {'categories': [], 'annotations': [], 'images': []}
-        for i, cls in enumerate(classes, 0):
-            dataset['categories'].append({'id': i, 'name': cls, 'supercategory': 'mark'})
-    
-    # 标注的id
-    ann_id_cnt = 0
-    for k, index in enumerate(tqdm(indexes)):
-        # 支持 png jpg 格式的图片。
-        txtFile = index.replace('images','txt').replace('.jpg','.txt').replace('.png','.txt')
-        # 读取图像的宽和高
-        im = cv2.imread(os.path.join(root_path, 'images/') + index)
-        height, width, _ = im.shape
-        if arg.random_split or arg.split_by_file:
-            # 切换dataset的引用对象，从而划分数据集
-                if index in train_img:
-                    dataset = train_dataset
-                elif index in val_img:
-                    dataset = val_dataset
-                elif index in test_img:
-                    dataset = test_dataset
-        # 添加图像的信息
-        dataset['images'].append({'file_name': index,
-                                    'id': k,
-                                    'width': width,
-                                    'height': height})
-        if not os.path.exists(os.path.join(originLabelsDir, txtFile)):
-            # 如没标签，跳过，只保留图片信息。
+    # ---- 格式二: images/train, labels/train ----
+    splits_found = []
+    for sp in ['train', 'val', 'test']:
+        if (root / 'images' / sp).exists() and (root / 'labels' / sp).exists():
+            splits_found.append(sp)
+    if splits_found:
+        paths = [(sp, str(root / 'images' / sp), str(root / 'labels' / sp)) for sp in splits_found]
+        return 'format2', paths
+
+    # ---- 标准结构: images + labels ----
+    if (root / 'images').exists() and (root / 'labels').exists():
+        return 'standard', [('dataset', str(root / 'images'), str(root / 'labels'))]
+
+    # ---- 混合结构: 根目录下同时包含图片与 txt (非 classes.txt) ----
+    has_img = False
+    has_txt = False
+    for f in root.iterdir():
+        if f.is_file():
+            suf = f.suffix.lower()
+            if suf in IMAGE_EXTS:
+                has_img = True
+            if suf == '.txt' and f.name not in ['classes.txt', 'obj.names', 'names.txt']:
+                has_txt = True
+        if has_img and has_txt:
+            return 'mixed', [('dataset', str(root), str(root))]
+
+    return 'unknown', []
+
+
+def load_classes(root_dir: str):
+    """尝试加载类别名称(优先 classes.txt)。如果不存在则返回空列表。"""
+    for name in ['classes.txt', 'obj.names', 'names.txt']:
+        fp = Path(root_dir) / name
+        if fp.exists():
+            with open(fp, 'r', encoding='utf-8') as f:
+                return [line.strip() for line in f if line.strip()]
+    return []
+
+
+def iter_images(images_dir: str):
+    """遍历图片文件名(保持原始顺序/稳定可排序)。"""
+    files = [f for f in os.listdir(images_dir) if Path(f).suffix.lower() in IMAGE_EXTS]
+    files.sort()
+    return files
+
+
+def build_categories(class_list):
+    """根据类别名称列表构造 COCO categories。若列表为空则返回空。"""
+    return [{'id': i, 'name': name, 'supercategory': 'object'} for i, name in enumerate(class_list)]
+
+
+def read_label_file(label_path):
+    """读取单个 YOLO 标签文件, 返回每一行的(list[str])。异常返回空。"""
+    try:
+        with open(label_path, 'r', encoding='utf-8') as f:
+            return [ln.strip() for ln in f if ln.strip()]
+    except:
+        return []
+
+
+def convert_split(split_name, images_dir, labels_dir, classes):
+    """将一个分割(或整个数据集)转换为 COCO dict。"""
+    categories = build_categories(classes)
+    coco = {
+        'info': {'description': f'YOLO->COCO 转换 ({split_name})'},
+        'licenses': [],
+        'categories': categories,
+        'images': [],
+        'annotations': []
+    }
+    class_count = len(categories) if categories else None
+    ann_id = 0
+    image_files = iter_images(images_dir)
+    for img_id, img_name in enumerate(tqdm(image_files, desc=f'转换 {split_name}')):
+        img_path = os.path.join(images_dir, img_name)
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f'警告: 无法读取图片 {img_path}, 跳过')
             continue
-        with open(os.path.join(originLabelsDir, txtFile), 'r') as fr:
-            labelList = fr.readlines()
-            for label in labelList:
-                label = label.strip().split()
-                x = float(label[1])
-                y = float(label[2])
-                w = float(label[3])
-                h = float(label[4])
+        h, w = img.shape[:2]
+        coco['images'].append({
+            'file_name': img_name,
+            'id': img_id,
+            'width': w,
+            'height': h
+        })
+        # 标签文件路径(混合结构时 labels_dir == images_dir)
+        stem = os.path.splitext(img_name)[0]
+        label_path = os.path.join(labels_dir, stem + '.txt')
+        if not os.path.exists(label_path):
+            continue  # 无标签图片仍保留
+        lines = read_label_file(label_path)
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            try:
+                cls_id = int(float(parts[0]))
+                if class_count is not None and (cls_id < 0 or cls_id >= class_count):
+                    # 若类别索引越界, 仍尝试接受, 自动扩展 categories
+                    while cls_id >= len(coco['categories']):
+                        new_id = len(coco['categories'])
+                        coco['categories'].append({'id': new_id, 'name': f'class_{new_id}', 'supercategory': 'object'})
+                x, y, bw, bh = map(float, parts[1:5])
+            except Exception:
+                continue
+            # YOLO (cx,cy,w,h) 归一化 -> COCO (x,y,width,height)
+            x1 = (x - bw / 2.0) * w
+            y1 = (y - bh / 2.0) * h
+            box_w = max(0.0, bw * w)
+            box_h = max(0.0, bh * h)
+            coco['annotations'].append({
+                'id': ann_id,
+                'image_id': img_id,
+                'category_id': cls_id,
+                'bbox': [x1, y1, box_w, box_h],
+                'area': box_w * box_h,
+                'iscrowd': 0,
+                'segmentation': [[x1, y1, x1 + box_w, y1, x1 + box_w, y1 + box_h, x1, y1 + box_h]]
+            })
+            ann_id += 1
+    return coco
 
-                # convert x,y,w,h to x1,y1,x2,y2
-                H, W, _ = im.shape
-                x1 = (x - w / 2) * W
-                y1 = (y - h / 2) * H
-                x2 = (x + w / 2) * W
-                y2 = (y + h / 2) * H
-                # 标签序号从0开始计算, coco2017数据集标号混乱，不管它了。
-                cls_id = int(label[0])   
-                width = max(0, x2 - x1)
-                height = max(0, y2 - y1)
-                dataset['annotations'].append({
-                    'area': width * height,
-                    'bbox': [x1, y1, width, height],
-                    'category_id': cls_id,
-                    'id': ann_id_cnt,
-                    'image_id': k,
-                    'iscrowd': 0,
-                    # mask, 矩形是从左上角点按顺时针的四个顶点
-                    'segmentation': [[x1, y1, x2, y1, x2, y2, x1, y2]]
-                })
-                ann_id_cnt += 1
 
-    # 保存结果
-    folder = os.path.join(root_path, 'annotations')
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    if arg.random_split or arg.split_by_file:
-        for phase in ['train','val','test']:
-            json_name = os.path.join(root_path, 'annotations/{}.json'.format(phase))
-            with open(json_name, 'w') as f:
-                if phase == 'train':
-                    json.dump(train_dataset, f)
-                elif phase == 'val':
-                    json.dump(val_dataset, f)
-                elif phase == 'test':
-                    json.dump(test_dataset, f)
-            print('Save annotation to {}'.format(json_name))
-    else:
-        json_name = os.path.join(root_path, 'annotations/{}'.format(arg.save_path))
-        with open(json_name, 'w') as f:
-            json.dump(dataset, f)
-            print('Save annotation to {}'.format(json_name))
+def save_coco(coco_dict, output_path):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(coco_dict, f, ensure_ascii=False)
+    print(f'✅ 保存: {output_path}')
+
+
+def maybe_split(temp_dir, output_dir, args):
+    """若用户指定 --split, 调用 coco_dataset_split.py 进行再划分。"""
+    ratios = [args.train_ratio, args.val_ratio, args.test_ratio]
+    if abs(sum(ratios) - 1.0) > 1e-6:
+        print('⚠️ 划分比例之和需为1.0, 已忽略 split 操作')
+        return
+    script = Path(__file__).parent / 'coco_dataset_split.py'
+    if not script.exists():
+        print('⚠️ 未找到 coco_dataset_split.py, 跳过划分。')
+        return
+    cmd = [
+        'python', str(script),
+        '-i', str(temp_dir),
+        '-o', str(output_dir),
+        '--train_ratio', str(args.train_ratio),
+        '--val_ratio', str(args.val_ratio),
+        '--test_ratio', str(args.test_ratio),
+        '--seed', str(args.seed)
+    ]
+    print('▶ 调用外部划分脚本: ' + ' '.join(cmd))
+    subprocess.run(cmd, check=False)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='YOLO 转 COCO 工具 (多结构支持)',
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument('-d', '--dataset_dir', required=True, help='数据集根目录')
+    parser.add_argument('-o', '--output', required=False, help='输出路径(可选):\n'
+                                                           '  A) 当输入为格式一/格式二且未提供 -o 时: 默认写入 <dataset_dir>/annotations/*.json\n'
+                                                           '  B) 当输入为 standard/mixed 且未提供 -o 且未使用 --split: 默认写入 <dataset_dir>/annotations.json\n'
+                                                           '  C) 当输入为 standard/mixed 且使用 --split: 必须提供 -o 作为划分输出目录\n'
+                                                           '  指定后行为与此前说明一致。')
+    parser.add_argument('--split', action='store_true', help='当输入为标准或混合结构时, 先转换再按比例调用 coco_dataset_split 划分')
+    parser.add_argument('--train_ratio', type=float, default=0.8, help='(可选) 划分训练集比例')
+    parser.add_argument('--val_ratio', type=float, default=0.1, help='(可选) 划分验证集比例')
+    parser.add_argument('--test_ratio', type=float, default=0.1, help='(可选) 划分测试集比例')
+    parser.add_argument('--seed', type=int, default=42, help='随机种子(传递给划分脚本)')
+    return parser.parse_args()
+
 
 def main():
-    yolo2coco(arg)
+    args = parse_args()
+    dataset_dir = args.dataset_dir
+    if not os.path.exists(dataset_dir):
+        print(f'❌ 数据集目录不存在: {dataset_dir}')
+        return
 
-if __name__ == "__main__":
+    structure, paths = detect_structure(dataset_dir)
+    if structure == 'unknown':
+        print('❌ 无法识别的数据集结构, 请确认目录组织。')
+        return
+    print(f'📁 检测到结构: {structure}')
+
+    classes = load_classes(dataset_dir)
+    if classes:
+        print(f'📋 加载类别数: {len(classes)}')
+    else:
+        print('⚠️ 未找到类别文件, 将按标签文件动态扩展类别。')
+
+    output = args.output  # 可能为 None
+    # 先检测结构再决定默认输出
+
+    # 结构已带分割(format1/format2) -> 为每个 split 单独生成 JSON
+    if structure in ['format1', 'format2']:
+        if output is None:
+            if structure == 'format1':
+                print('ℹ️ 格式一未提供 -o，默认写入 <dataset_dir>/<split>/annotations/<split>.json')
+                for split_name, img_dir, lbl_dir in paths:
+                    coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
+                    split_ann_dir = Path(dataset_dir) / split_name / 'annotations'
+                    split_ann_dir.mkdir(parents=True, exist_ok=True)
+                    save_coco(coco_dict, str(split_ann_dir / f'{split_name}.json'))
+                print('🎉 转换完成 (格式一多分割默认路径更新为 <split>.json).')
+                return
+            else:  # format2
+                out_dir = Path(dataset_dir) / 'annotations'
+                print(f'ℹ️ 格式二未提供 -o，默认写入 {out_dir} 下 train/val/test.json')
+                out_dir.mkdir(parents=True, exist_ok=True)
+                for split_name, img_dir, lbl_dir in paths:
+                    coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
+                    save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
+                print('🎉 转换完成 (格式二多分割默认路径).')
+                return
+        else:
+            # 用户显式提供输出目录，沿用原先行为：目录下 train.json/val.json/test.json
+            out_dir = Path(output)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for split_name, img_dir, lbl_dir in paths:
+                coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
+                save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
+            print('🎉 转换完成 (多分割自定义输出).')
+            return
+
+    # 标准 / 混合 结构
+    split_name, img_dir, lbl_dir = paths[0]
+    coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
+
+    if args.split and structure in ['standard', 'mixed']:
+        if output is None:
+            print('❌ standard/mixed 且使用 --split 时必须指定 -o 输出目录')
+            return
+        output_path = Path(output)
+        # 先输出到临时目录 temp/images + annotations.json, 再调用外部划分
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # 保存 annotations.json
+            save_coco(coco_dict, str(tmp_path / 'annotations.json'))
+            # 拷贝图片 (COCO 划分脚本需要 images/ 目录)
+            images_out = tmp_path / 'images'
+            images_out.mkdir(exist_ok=True)
+            for f in iter_images(img_dir):
+                src = Path(img_dir) / f
+                dst = images_out / f
+                try:
+                    if src != dst:
+                        # 复制图片
+                        with open(src, 'rb') as fr, open(dst, 'wb') as fw:
+                            fw.write(fr.read())
+                except Exception as e:
+                    print(f'复制图片失败: {src} -> {dst}: {e}')
+            # 同时保存 classes.txt (若存在)
+            if classes:
+                with open(tmp_path / 'classes.txt', 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(classes))
+            # 调用划分脚本
+            maybe_split(tmp_path, output_path, args)
+        print('🎉 转换并划分完成.')
+        return
+
+    # 不划分: 输出单一 JSON
+    if output is None:
+        # 默认输出到数据集根目录 annotations.json
+        default_file = Path(dataset_dir) / 'annotations.json'
+        print(f'ℹ️ 未提供 -o，写入默认文件: {default_file}')
+        save_coco(coco_dict, str(default_file))
+    else:
+        output_path = Path(output)
+        if output_path.suffix.lower() == '.json':
+            save_coco(coco_dict, str(output_path))
+        else:
+            output_path.mkdir(parents=True, exist_ok=True)
+            save_coco(coco_dict, str(output_path / 'annotations.json'))
+    print('🎉 转换完成 (单文件).')
+
+
+if __name__ == '__main__':
     main()
