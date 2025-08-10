@@ -32,14 +32,60 @@
 
 ## YOLO数据集格式说明
 
+未划分时：
+
+| 格式 | 目录结构 | 特点 |
+|------|----------|------|
+| **标准** | `dataset/`<br/>`├── images/`<br/>`└── labels/`<br/>`└── classes.txt(data.yaml)` | 单一集合 (未预分割)，常用于后续再划分 |
+| **混合** | `dataset/`<br/>`├── *.jpg/*.png`<br/>`├── *.txt`<br/>`└── classes.txt(data.yaml)` | 图片与标签同目录混放，快速整理或小规模数据 |
+
 YOLO数据集支持以下两种主要组织形式：
 
 | 格式 | 目录结构 | 特点 |
 |------|----------|------|
-| **格式一** | `dataset/`<br/>`├── train/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── val/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── test/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`└── classes.txt(data.yaml)` | 按数据集划分分组 (train/val/test 顶级) |
-| **格式二** | `dataset/`<br/>`├── images/`<br/>`│   ├── train/ val/ test/`<br/>`├── labels/`<br/>`│   ├── train/ val/ test/`<br/>`└── classes.txt(data.yaml)` | 按文件类型分组 (images 与 labels 顶级) |
-| **标准** | `dataset/`<br/>`├── images/`<br/>`└── labels/`<br/>`└── classes.txt(data.yaml)` | 单一集合 (未预分割)，常用于后续再划分 |
-| **混合** | `dataset/`<br/>`├── *.jpg/*.png`<br/>`├── *.txt`<br/>`└── classes.txt(data.yaml)` | 图片与标签同目录混放，快速整理或小规模数据 |
+| **格式一** | `yolo_dataset/`<br/>`├── train/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── val/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── test/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`└── classes.txt(data.yaml)` | 按数据集划分分组 (train/val/test 顶级) |
+| **格式二** | `yolo_dataset/`<br/>`├── images/`<br/>`│   ├── train/ val/ test/`<br/>`├── labels/`<br/>`│   ├── train/ val/ test/`<br/>`└── classes.txt(data.yaml)` | 按文件类型分组 (images 与 labels 顶级) |
+
+---
+
+## COCO数据集格式说明
+
+| 组成 | 路径/文件 | 说明 |
+|------|-----------|------|
+| 注释目录 | `annotations/` | 存放所有任务/分割的 JSON 注释 |
+| 检测训练集 | `instances_train2017.json` | 目标检测 (images/annotations/categories) 训练集 |
+| 检测验证集 | `instances_val2017.json` | 目标检测验证集 |
+| 关键点训练 | `person_keypoints_train2017.json` | 人体关键点训练注释 |
+| 关键点验证 | `person_keypoints_val2017.json` | 人体关键点验证注释 |
+| 描述训练 | `captions_train2017.json` | 图像描述训练注释 |
+| 描述验证 | `captions_val2017.json` | 图像描述验证注释 |
+| 训练图片 | `train2017/` | 训练图片目录 (file_name 对应) |
+| 验证图片 | `val2017/` | 验证图片目录 |
+| 测试图片 | `test2017/` | 测试图片目录 (常无公开标注) |
+
+最小检测任务必需：`annotations/instances_train*.json` + `annotations/instances_val*.json` + 对应图片目录。
+
+典型结构：
+```
+coco_dataset/
+├── annotations/
+│   ├── instances_train2017.json
+│   ├── instances_val2017.json
+│   ├── captions_train2017.json
+│   ├── captions_val2017.json
+│   ├── person_keypoints_train2017.json
+│   └── person_keypoints_val2017.json
+│
+├── train2017/
+├── val2017/
+└── test2017/
+```
+
+说明：
+- 仅做检测可忽略 captions / keypoints JSON
+- test 集可缺少 annotations（用于评测提交）
+- 年份后缀可换成自定义名字, 只需和 JSON 中 file_name 保持一致
+- 本仓库生成的 COCO (yolo2coco / coco_dataset_split) 可能只含 train/val/test 若干 JSON
 
 ---
 
