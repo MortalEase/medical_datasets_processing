@@ -199,10 +199,10 @@ def parse_args():
     )
     parser.add_argument('-d', '--dataset_dir', required=True, help='数据集根目录')
     parser.add_argument('-o', '--output_dir', required=False, help='输出路径(可选):\n'
-                                                           '  A) 当输入为格式一/格式二且未提供 -o 时: 默认写入 <dataset_dir>/annotations/*.json\n'
-                                                           '  B) 当输入为 standard/mixed 且未提供 -o 且未使用 --split: 默认写入 <dataset_dir>/annotations.json\n'
-                                                           '  C) 当输入为 standard/mixed 且使用 --split: 必须提供 -o 作为划分输出目录\n'
-                                                           '  指定后行为与此前说明一致。')
+                                                           '  A) 格式一 / 格式二 且未提供 -o: 默认 <dataset_dir>/annotations/<split>.json\n'
+                                                           '  B) standard/mixed 未提供 -o 且未使用 --split: 默认 <dataset_dir>/annotations.json\n'
+                                                           '  C) standard/mixed 使用 --split: 必须提供 -o 作为最终划分输出目录\n'
+                                                           '  若显式提供 -o: 按前述逻辑写入 (目录或单一 .json 文件)。')
     parser.add_argument('--split', action='store_true', help='当输入为标准或混合结构时, 先转换再按比例调用 coco_dataset_split 划分')
     parser.add_argument('--train_ratio', type=float, default=0.8, help='(可选) 划分训练集比例')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='(可选) 划分验证集比例')
@@ -236,32 +236,21 @@ def main():
     # 结构已带分割(format1/format2) -> 为每个 split 单独生成 JSON
     if structure in ['format1', 'format2']:
         if output is None:
-            if structure == 'format1':
-                print('ℹ️ 格式一未提供 -o，默认写入 <dataset_dir>/<split>/annotations/<split>.json')
-                for split_name, img_dir, lbl_dir in paths:
-                    coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
-                    split_ann_dir = Path(dataset_dir) / split_name / 'annotations'
-                    split_ann_dir.mkdir(parents=True, exist_ok=True)
-                    save_coco(coco_dict, str(split_ann_dir / f'{split_name}.json'))
-                print('🎉 转换完成 (格式一多分割默认路径更新为 <split>.json).')
-                return
-            else:  # format2
-                out_dir = Path(dataset_dir) / 'annotations'
-                print(f'ℹ️ 格式二未提供 -o，默认写入 {out_dir} 下 train/val/test.json')
-                out_dir.mkdir(parents=True, exist_ok=True)
-                for split_name, img_dir, lbl_dir in paths:
-                    coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
-                    save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
-                print('🎉 转换完成 (格式二多分割默认路径).')
-                return
+            out_dir = Path(dataset_dir) / 'annotations'
+            print(f'ℹ️ 多分割结构未提供 -o，统一默认写入 {out_dir}/<split>.json')
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for split_name, img_dir, lbl_dir in paths:
+                coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
+                save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
+            print('🎉 转换完成 (格式一/格式二 统一默认路径)。')
+            return
         else:
-            # 用户显式提供输出目录，沿用原先行为：目录下 train.json/val.json/test.json
             out_dir = Path(output)
             out_dir.mkdir(parents=True, exist_ok=True)
             for split_name, img_dir, lbl_dir in paths:
                 coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
                 save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
-            print('🎉 转换完成 (多分割自定义输出).')
+            print('🎉 转换完成 (多分割自定义输出)。')
             return
 
     # 标准 / 混合 结构
