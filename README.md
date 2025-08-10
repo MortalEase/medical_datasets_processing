@@ -6,8 +6,10 @@ YOLO数据集支持以下两种主要组织形式：
 
 | 格式 | 目录结构 | 特点 |
 |------|----------|------|
-| **格式一** | `yolo/`<br/>`├── test/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── train/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── val/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`└── data.yaml` | 按数据集划分分组<br/>（train/val/test为顶级目录） |
-| **格式二** | `yolo_dataset/`<br/>`├── images/`<br/>`│   ├── train/`<br/>`│   ├── val/`<br/>`│   └── test/`<br/>`├── labels/`<br/>`│   ├── train/`<br/>`│   ├── val/`<br/>`│   └── test/`<br/>`└── data.yaml` | 按文件类型分组<br/>（images/labels为顶级目录） |
+| **格式一** | `dataset/`<br/>`├── train/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── val/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`├── test/`<br/>`│   ├── images/`<br/>`│   └── labels/`<br/>`└── classes.txt(data.yaml)` | 按数据集划分分组 (train/val/test 顶级) |
+| **格式二** | `dataset/`<br/>`├── images/`<br/>`│   ├── train/ val/ test/`<br/>`├── labels/`<br/>`│   ├── train/ val/ test/`<br/>`└── classes.txt(data.yaml)` | 按文件类型分组 (images 与 labels 顶级) |
+| **标准** | `dataset/`<br/>`├── images/`<br/>`└── labels/`<br/>`└── classes.txt(data.yaml)` | 单一集合 (未预分割)，常用于后续再划分 |
+| **混合** | `dataset/`<br/>`├── *.jpg/*.png`<br/>`├── *.txt`<br/>`└── classes.txt(data.yaml)` | 图片与标签同目录混放，快速整理或小规模数据 |
 
 ---
 
@@ -26,25 +28,25 @@ YOLO数据集划分工具
 
 ```bash
 # 基础划分 (默认输出格式一，3个集合)
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录
+python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录  # 仍支持 -o 但推荐 --output_dir
 
 # 划分混合结构数据集 (图片和txt文件在同一文件夹)
 python yolo_dataset_split.py -i 混合结构数据集目录 -o 输出目录
 
 # 只划分为2个集合 (train/val，不要test)
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --no-test --train_ratio 0.8 --val_ratio 0.2
+python yolo_dataset_split.py -i 输入数据集目录 --output_dir 输出目录 --no-test --train_ratio 0.8 --val_ratio 0.2
 
 # 3个集合自定义比例划分
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 \
+python yolo_dataset_split.py -i 输入数据集目录 --output_dir 输出目录 \
                              --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1 \
                              --output_format 1
 
 # 2个集合划分混合结构数据集
-python yolo_dataset_split.py -i 混合结构数据集目录 -o 输出目录 \
+python yolo_dataset_split.py -i 混合结构数据集目录 --output_dir 输出目录 \
                              --no-test --train_ratio 0.9 --val_ratio 0.1
 
 # 设置随机种子保证可重现
-python yolo_dataset_split.py -i 输入数据集目录 -o 输出目录 --seed 42 --output_format 2
+python yolo_dataset_split.py -i 输入数据集目录 --output_dir 输出目录 --seed 42 --output_format 2
 ```
 
 **功能特点**：
@@ -266,18 +268,18 @@ YOLO转COCO格式转换工具
 **命令行**：
 ```bash
 # 1) 多分割 YOLO 结构 (格式一 / 格式二) -> 直接输出各自 JSON
-python yolo2coco.py -d path/to/format1_dataset -o output_coco_dir
+python yolo2coco.py -d path/to/format1_dataset --output_dir output_coco_dir
 
 # 2) 标准结构 / 混合结构 -> 输出单一 COCO 文件
-python yolo2coco.py -d path/to/standard_dataset -o coco.json
-python yolo2coco.py -d path/to/mixed_dataset -o out_dir          # 将生成 out_dir/annotations.json
+python yolo2coco.py -d path/to/standard_dataset --output_dir coco.json
+python yolo2coco.py -d path/to/mixed_dataset --output_dir out_dir          # 将生成 out_dir/annotations.json
 
 # 3) 标准 / 混合结构并需要按比例再划分 (内部调用 coco_dataset_split.py)
-python yolo2coco.py -d path/to/standard_dataset -o CocoSplitDir --split \
+python yolo2coco.py -d path/to/standard_dataset --output_dir CocoSplitDir --split \
     --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
 
 # 4) 自定义随机种子 (影响后续分层划分的随机性)
-python yolo2coco.py -d path/to/mixed_dataset -o CocoSplitDir --split --seed 2024
+python yolo2coco.py -d path/to/mixed_dataset --output_dir CocoSplitDir --split --seed 2024
 ```
 
 **参数说明**：
@@ -304,7 +306,7 @@ python yolo2coco.py -d path/to/mixed_dataset -o CocoSplitDir --split --seed 2024
 
 **快速验证**：
 ```bash
-python yolo2coco.py -d sample_yolo -o tmp.json
+python yolo2coco.py -d sample_yolo --output_dir tmp.json
 type tmp.json | more   # Windows 查看开头内容
 ```
 
@@ -314,7 +316,7 @@ type tmp.json | more   # Windows 查看开头内容
 **输出格式**：生成格式二（`dataset/images/train/ + dataset/labels/train/` 等）YOLO数据集
 
 ```bash
-python convert_medical_to_yolo.py -i 输入图像目录 -o 输出YOLO数据集目录 -m 元数据CSV文件路径
+python convert_medical_to_yolo.py -i 输入图像目录 --output_dir 输出YOLO数据集目录 -m 元数据CSV文件路径
 ```
 
 ## voc2yolo.py
@@ -336,10 +338,10 @@ VOC (Pascal VOC XML) 转 YOLO 标注转换工具
 
 **关键参数**：
 ```bash
-python voc2yolo.py -i VOC_ROOT -o YOLO_OUT
-python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --structure mixed
-python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --classes-file classes.txt --ignore-difficult
-python voc2yolo.py -i VOC_ROOT -o YOLO_OUT --save-yaml --allow-new-classes
+python voc2yolo.py -i VOC_ROOT --output_dir YOLO_OUT
+python voc2yolo.py -i VOC_ROOT --output_dir YOLO_OUT --structure mixed
+python voc2yolo.py -i VOC_ROOT --output_dir YOLO_OUT --classes-file classes.txt --ignore-difficult
+python voc2yolo.py -i VOC_ROOT --output_dir YOLO_OUT --save-yaml --allow-new-classes
 ```
 
 **常用选项说明**：
@@ -372,14 +374,14 @@ COCO数据集划分工具
 
 ```bash
 # 基础划分
-python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split
+python coco_dataset_split.py -i RibFrac-COCO-Full --output_dir RibFrac-COCO-Split
 
 # 自定义比例
-python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split \
+python coco_dataset_split.py -i RibFrac-COCO-Full --output_dir RibFrac-COCO-Split \
                              --train_ratio 0.8 --val_ratio 0.1 --test_ratio 0.1
 
 # 自定义随机种子
-python coco_dataset_split.py -i RibFrac-COCO-Full -o RibFrac-COCO-Split --seed 42
+python coco_dataset_split.py -i RibFrac-COCO-Full --output_dir RibFrac-COCO-Split --seed 42
 ```
 
 ## ribfrac_to_coco.py
@@ -387,7 +389,7 @@ RibFrac 3D CT转COCO格式目标检测
 
 ```bash
 # 基础转换
-python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO
+python ribfrac_to_coco.py -i D:/datasets/ribFrac --output_dir D:/datasets/RibFrac-COCO
 
 # 自定义窗宽窗位
 python ribfrac_to_coco.py -i D:/datasets/ribFrac -o D:/datasets/RibFrac-COCO \
