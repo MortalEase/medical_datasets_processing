@@ -190,7 +190,7 @@ def parse_args():
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument('-d', '--dataset_dir', required=True, help='数据集根目录')
-    parser.add_argument('-o', '--output', required=False, help='输出路径(可选):\n'
+    parser.add_argument('-o', '--output_dir', required=False, help='输出路径(可选):\n'
                                                            '  A) 当输入为格式一/格式二且未提供 -o 时: 默认写入 <dataset_dir>/annotations/*.json\n'
                                                            '  B) 当输入为 standard/mixed 且未提供 -o 且未使用 --split: 默认写入 <dataset_dir>/annotations.json\n'
                                                            '  C) 当输入为 standard/mixed 且使用 --split: 必须提供 -o 作为划分输出目录\n'
@@ -222,7 +222,7 @@ def main():
     else:
         print('⚠️ 未找到类别文件, 将按标签文件动态扩展类别。')
 
-    output = args.output  # 可能为 None
+    output = args.output_dir  # 可能为 None
     # 先检测结构再决定默认输出
 
     # 结构已带分割(format1/format2) -> 为每个 split 单独生成 JSON

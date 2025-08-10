@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("-i", "--input", required=True, help="输入 VOC 根目录 (包含 Annotations/ JPEGImages/ 或自定义) 或存放 XML 的目录")
-    p.add_argument("-o", "--output", required=True, help="输出 YOLO 数据集根目录")
+    p.add_argument("-o", "--output_dir", required=True, help="输出 YOLO 数据集根目录")
     p.add_argument("--xml-dir", default=None, help="若 XML 不在 input/Annotations 下，可显式指定")
     p.add_argument("--img-dir", default=None, help="若图片不在 input/JPEGImages 下，可显式指定")
     p.add_argument("--structure", choices=["standard", "mixed"], default="standard", help="输出 YOLO 结构")
