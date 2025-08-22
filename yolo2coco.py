@@ -14,7 +14,7 @@ import tempfile
 import subprocess
 from pathlib import Path
 from tqdm import tqdm
-from utils.logging_utils import tee_stdout_stderr
+from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 _LOG_FILE = tee_stdout_stderr('logs')
 
 IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp']
@@ -115,7 +115,7 @@ def convert_split(split_name, images_dir, labels_dir, classes):
         img_path = os.path.join(images_dir, img_name)
         img = cv2.imread(img_path)
         if img is None:
-            print(f'警告: 无法读取图片 {img_path}, 跳过')
+            log_warn(f'无法读取图片 {img_path}, 跳过。')
             continue
         h, w = img.shape[:2]
         coco['images'].append({
@@ -166,18 +166,18 @@ def save_coco(coco_dict, output_path):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(coco_dict, f, ensure_ascii=False)
-    print(f'✅ 保存: {output_path}')
+    log_info(f'保存: {output_path}')
 
 
 def maybe_split(temp_dir, output_dir, args):
     """若用户指定 --split, 调用 coco_dataset_split.py 进行再划分。"""
     ratios = [args.train_ratio, args.val_ratio, args.test_ratio]
     if abs(sum(ratios) - 1.0) > 1e-6:
-        print('⚠️ 划分比例之和需为1.0, 已忽略 split 操作')
+        log_warn('划分比例之和需为1.0，已忽略 split 操作。')
         return
     script = Path(__file__).parent / 'coco_dataset_split.py'
     if not script.exists():
-        print('⚠️ 未找到 coco_dataset_split.py, 跳过划分。')
+        log_warn('未找到 coco_dataset_split.py，跳过划分。')
         return
     cmd = [
         'python', str(script),
@@ -188,7 +188,7 @@ def maybe_split(temp_dir, output_dir, args):
         '--test_ratio', str(args.test_ratio),
         '--seed', str(args.seed)
     ]
-    print('▶ 调用外部划分脚本: ' + ' '.join(cmd))
+    log_info('调用外部划分脚本: ' + ' '.join(cmd))
     subprocess.run(cmd, check=False)
 
 
@@ -215,20 +215,20 @@ def main():
     args = parse_args()
     dataset_dir = args.dataset_dir
     if not os.path.exists(dataset_dir):
-        print(f'❌ 数据集目录不存在: {dataset_dir}')
+        log_error(f'数据集目录不存在: {dataset_dir}')
         return
 
     structure, paths = detect_structure(dataset_dir)
     if structure == 'unknown':
-        print('❌ 无法识别的数据集结构, 请确认目录组织。')
+        log_error('无法识别的数据集结构，请确认目录组织。')
         return
-    print(f'📁 检测到结构: {structure}')
+    log_info(f'检测到结构: {structure}')
 
     classes = load_classes(dataset_dir)
     if classes:
-        print(f'📋 加载类别数: {len(classes)}')
+        log_info(f'加载类别数: {len(classes)}')
     else:
-        print('⚠️ 未找到类别文件, 将按标签文件动态扩展类别。')
+        log_warn('未找到类别文件，将按标签文件动态扩展类别。')
 
     output = args.output_dir  # 可能为 None
     # 先检测结构再决定默认输出
@@ -237,12 +237,12 @@ def main():
     if structure in ['format1', 'format2']:
         if output is None:
             out_dir = Path(dataset_dir) / 'annotations'
-            print(f'ℹ️ 多分割结构未提供 -o，统一默认写入 {out_dir}/<split>.json')
+            log_info(f'多分割结构未提供 -o，统一默认写入 {out_dir}/<split>.json')
             out_dir.mkdir(parents=True, exist_ok=True)
             for split_name, img_dir, lbl_dir in paths:
                 coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
                 save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
-            print('🎉 转换完成 (格式一/格式二 统一默认路径)。')
+            log_info('转换完成 (格式一/格式二 统一默认路径)。')
             return
         else:
             out_dir = Path(output)
@@ -250,7 +250,7 @@ def main():
             for split_name, img_dir, lbl_dir in paths:
                 coco_dict = convert_split(split_name, img_dir, lbl_dir, classes)
                 save_coco(coco_dict, str(out_dir / f'{split_name}.json'))
-            print('🎉 转换完成 (多分割自定义输出)。')
+            log_info('转换完成 (多分割自定义输出)。')
             return
 
     # 标准 / 混合 结构
@@ -259,7 +259,7 @@ def main():
 
     if args.split and structure in ['standard', 'mixed']:
         if output is None:
-            print('❌ standard/mixed 且使用 --split 时必须指定 -o 输出目录')
+            log_error('standard/mixed 且使用 --split 时必须指定 -o 输出目录。')
             return
         output_path = Path(output)
         # 先输出到临时目录 temp/images + annotations.json, 再调用外部划分
@@ -279,21 +279,21 @@ def main():
                         with open(src, 'rb') as fr, open(dst, 'wb') as fw:
                             fw.write(fr.read())
                 except Exception as e:
-                    print(f'复制图片失败: {src} -> {dst}: {e}')
+                    log_warn(f'复制图片失败: {src} -> {dst}: {e}')
             # 同时保存 classes.txt (若存在)
             if classes:
                 with open(tmp_path / 'classes.txt', 'w', encoding='utf-8') as f:
                     f.write('\n'.join(classes))
             # 调用划分脚本
             maybe_split(tmp_path, output_path, args)
-        print('🎉 转换并划分完成.')
+        log_info('转换并划分完成。')
         return
 
     # 不划分: 输出单一 JSON
     if output is None:
         # 默认输出到数据集根目录 annotations.json
         default_file = Path(dataset_dir) / 'annotations.json'
-        print(f'ℹ️ 未提供 -o，写入默认文件: {default_file}')
+        log_info(f'未提供 -o，写入默认文件: {default_file}')
         save_coco(coco_dict, str(default_file))
     else:
         output_path = Path(output)
@@ -302,7 +302,7 @@ def main():
         else:
             output_path.mkdir(parents=True, exist_ok=True)
             save_coco(coco_dict, str(output_path / 'annotations.json'))
-    print('🎉 转换完成 (单文件).')
+    log_info('转换完成 (单文件)。')
 
 
 if __name__ == '__main__':

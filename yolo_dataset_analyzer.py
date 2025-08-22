@@ -12,7 +12,7 @@ import yaml
 import random
 from prettytable import PrettyTable
 from utils.yolo_utils import get_image_extensions, detect_yolo_structure
-from utils.logging_utils import tee_stdout_stderr
+from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 _LOG_FILE = tee_stdout_stderr('logs')
 
 
@@ -219,23 +219,23 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=None):
 
 def generate_report(split_name, missing, redundant):
     """生成检查报告"""
-    print(f"\n{'=' * 20} {split_name} 检查报告 {'=' * 20}")
-    print(f"缺失标注文件: {len(missing)} 个")
-    print(f"冗余标注文件: {len(redundant)} 个")
+    log_info(f"\n{'=' * 20} {split_name} 检查报告 {'=' * 20}")
+    log_info(f"缺失标注文件: {len(missing)} 个")
+    log_info(f"冗余标注文件: {len(redundant)} 个")
 
     if missing:
-        print("\n[ 缺失标注的图片 ]")
+        log_info("\n[ 缺失标注的图片 ]")
         for f in missing[:5]:  # 最多显示前5个
             print(f"  ! {os.path.basename(f)}")
-        if len(missing) > 5: 
-            print(f"  ...（还有{len(missing)-5}个）")
+        if len(missing) > 5:
+            log_info(f"  ...（还有{len(missing)-5}个）")
 
     if redundant:
-        print("\n[ 冗余的标注文件 ]")
+        log_info("\n[ 冗余的标注文件 ]")
         for f in redundant[:5]:
             print(f"  x {os.path.basename(f)}")
-        if len(redundant) > 5: 
-            print(f"  ...（还有{len(redundant)-5}个）")
+        if len(redundant) > 5:
+            log_info(f"  ...（还有{len(redundant)-5}个）")
 
 
 def analyze_annotation_statistics(img_dir, label_dir, split_name="", class_names=None):
@@ -342,7 +342,7 @@ def create_basic_stats_table(all_stats):
         f"{total_avg_boxes:.2f}"
     ])
     
-    print(f"\n📊 数据集基本统计信息:")
+    log_info(f"\n📊 数据集基本统计信息:")
     print(table)
 
 
@@ -354,7 +354,7 @@ def create_class_distribution_table(all_stats, class_names):
         all_class_ids.update(stats[3].keys())
     
     if not all_class_ids:
-        print("\n⚠️  没有找到任何类别标注")
+        log_warn("\n没有找到任何类别标注")
         return
     
     all_class_ids = sorted(all_class_ids)
@@ -404,24 +404,24 @@ def create_class_distribution_table(all_stats, class_names):
     total_row.append(f"{grand_total}(100.0%)")
     table.add_row(total_row)
     
-    print(f"\n📈 类别分布统计表:")
+    log_info(f"\n📈 类别分布统计表:")
     print(table)
 
 
 def analyze_dataset(dataset_dir, show_stats=False):
     """分析整个数据集"""
-    print(f"🔍 开始分析数据集: {dataset_dir}")
+    log_info(f"开始分析数据集: {dataset_dir}")
     
     # 检测数据集结构
     structure, paths = get_dataset_paths(dataset_dir)
     
     if not paths:
-        print("❌ 错误: 未找到有效的YOLO数据集结构")
-        print("支持的结构:")
-        print("  1. 格式一: dataset/train/images/ + dataset/train/labels/ 等")
-        print("  2. 格式二: dataset/images/train/ + dataset/labels/train/ 等")
-        print("  3. 简单结构: dataset/images/ + dataset/labels/")
-        print("  4. 混合结构: 图片和txt标签文件在同一个文件夹中")
+        log_error("未找到有效的YOLO数据集结构")
+        log_info("支持的结构:")
+        log_info("  1. 格式一: dataset/train/images/ + dataset/train/labels/ 等")
+        log_info("  2. 格式二: dataset/images/train/ + dataset/labels/train/ 等")
+        log_info("  3. 简单结构: dataset/images/ + dataset/labels/")
+        log_info("  4. 混合结构: 图片和txt标签文件在同一个文件夹中")
         return
     
     # 加载类别名称

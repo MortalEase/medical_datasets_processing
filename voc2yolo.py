@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Dict, Tuple, Set
 
-from utils.logging_utils import tee_stdout_stderr
+from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 from utils.yolo_utils import (
     read_class_names,
     write_class_names,
@@ -126,7 +126,7 @@ def load_or_collect_classes(args: argparse.Namespace, xml_files: List[Path]) -> 
     if args.classes_file:
         classes = read_class_names(args.classes_file)
         if not classes:
-            print(f"[WARN] 指定 classes 文件为空或读取失败: {args.classes_file}")
+            log_warn(f"指定 classes 文件为空或读取失败: {args.classes_file}")
     if not classes:  # 自动收集
         seen: List[str] = []
         seen_set: Set[str] = set()
@@ -150,7 +150,7 @@ def main():
 
     in_root = Path(args.input)
     if not in_root.exists():
-        print(f"[ERROR] 输入目录不存在: {in_root}")
+        log_error(f"输入目录不存在: {in_root}")
         sys.exit(1)
 
     # 推断 XML 与 图片目录
@@ -159,30 +159,30 @@ def main():
     if not xml_dir.exists():
         # 若指定目录不存在，尝试直接把 input 当作 xml 存放目录
         if args.xml_dir:
-            print(f"[ERROR] XML 目录不存在: {xml_dir}")
+            log_error(f"XML 目录不存在: {xml_dir}")
             sys.exit(1)
         else:
             xml_dir = in_root
     if not img_dir.exists():
         # 不强制存在 (可能用户只想要 labels)
-        print(f"[WARN] 图片目录不存在: {img_dir}")
+        log_warn(f"图片目录不存在: {img_dir}")
 
     xml_files = collect_xml_files(xml_dir)
     if not xml_files:
-        print(f"[ERROR] 未找到任何 XML: {xml_dir}")
+        log_error(f"未找到任何 XML: {xml_dir}")
         sys.exit(1)
-    print(f"发现 XML 标注文件: {len(xml_files)}")
+    log_info(f"发现 XML 标注文件: {len(xml_files)}")
 
     classes = load_or_collect_classes(args, xml_files)
     if not classes:
-        print("[ERROR] 未能获取类别集合 (classes)；请显式提供 --classes-file")
+        log_error("未能获取类别集合 (classes)；请显式提供 --classes-file")
         sys.exit(1)
-    print(f"类别数: {len(classes)} -> {classes}")
+    log_info(f"类别数: {len(classes)} -> {classes}")
     cls_to_id = {c: i for i, c in enumerate(classes)}
 
-    out_root = Path(args.output)
+    out_root = Path(args.output_dir)
     img_out_dir, lbl_out_dir = ensure_output_dirs(out_root, args.structure, args.overwrite)
-    print(f"输出结构: {args.structure}; images -> {img_out_dir}; labels -> {lbl_out_dir}")
+    log_info(f"输出结构: {args.structure}; images -> {img_out_dir}; labels -> {lbl_out_dir}")
 
     image_exts = [e.lower() for e in (args.image_exts if args.image_exts else [x[1:] for x in get_image_extensions()])]
     image_exts = [f".{e}" if not e.startswith('.') else e for e in image_exts]
@@ -196,7 +196,7 @@ def main():
         try:
             filename, w, h, objects = parse_voc_xml(xp, args.ignore_difficult)
         except Exception as e:
-            print(f"[WARN] 跳过无法解析的 XML: {xp.name}: {e}")
+            log_warn(f"跳过无法解析的 XML: {xp.name}: {e}")
             continue
         stem = Path(filename).stem if filename else xp.stem
         # 查找图片 (同名，不同扩展)
@@ -210,7 +210,7 @@ def main():
         if img_path is None:
             missing_image += 1
             if args.verbose:
-                print(f"[WARN] 未找到匹配图片: {stem}.* (跳过图片复制，但仍生成标注)")
+                log_warn(f"未找到匹配图片: {stem}.* (跳过图片复制，但仍生成标注)")
 
         yolo_lines: List[str] = []
         for obj in objects:
@@ -222,7 +222,7 @@ def main():
                     new_classes.append(name)
                 else:
                     if args.verbose:
-                        print(f"[WARN] 未知类别 {name} (未启用 --allow-new-classes), 已跳过")
+                        log_warn(f"未知类别 {name} (未启用 --allow-new-classes), 已跳过")
                     continue
             xmin, ymin, xmax, ymax = obj["bbox"]
             cx, cy, bw, bh = voc_bbox_to_yolo(xmin, ymin, xmax, ymax, w, h)
@@ -244,25 +244,24 @@ def main():
                         wf.write(rf.read())
                     copied += 1
                 except Exception as e:
-                    print(f"[WARN] 复制图片失败 {img_path} -> {target_img}: {e}")
+                    log_warn(f"复制图片失败 {img_path} -> {target_img}: {e}")
 
         if args.verbose and idx % 100 == 0:
-            print(f"进度: {idx}/{len(xml_files)} 已转换 {converted} 个标签")
+            log_info(f"进度: {idx}/{len(xml_files)} 已转换 {converted} 个标签")
 
     # 写类别文件
     cls_out = out_root / ("data.yaml" if args.save_yaml else "classes.txt")
     write_class_names(cls_out, classes)
-    print(f"已写入类别文件: {cls_out} (共 {len(classes)} 类)")
+    log_info(f"已写入类别文件: {cls_out} (共 {len(classes)} 类)")
     if new_classes:
         uniq_new = sorted(set(new_classes), key=new_classes.index)
-        print(f"新增类别 (allow-new-classes): {uniq_new}")
-
-    print("===== 转换完成 =====")
-    print(f"XML 数: {len(xml_files)}")
-    print(f"生成标签: {converted}")
-    print(f"复制图片: {copied}")
-    print(f"缺失图片(未复制): {missing_image}")
-    print(f"类别数: {len(classes)}")
+        log_info(f"新增类别 (allow-new-classes): {uniq_new}")
+    log_info("===== 转换完成 =====")
+    log_info(f"XML 数: {len(xml_files)}")
+    log_info(f"生成标签: {converted}")
+    log_info(f"复制图片: {copied}")
+    log_info(f"缺失图片(未复制): {missing_image}")
+    log_info(f"类别数: {len(classes)}")
 
 
 if __name__ == "__main__":

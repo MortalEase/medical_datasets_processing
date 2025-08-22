@@ -10,7 +10,7 @@ import os
 import shutil
 import random
 import argparse
-from utils.logging_utils import tee_stdout_stderr
+from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 _LOG_FILE = tee_stdout_stderr('logs')
 from collections import defaultdict
 from utils.yolo_utils import (
@@ -95,10 +95,10 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
     structure, images_dir, labels_dir = detect_input_structure(base_dir)
     
     if structure == 'unknown':
-        print("❌ 错误: 未找到有效的数据集结构")
-        print("支持的输入结构:")
-        print("  1. 标准结构: dataset/images/ + dataset/labels/")
-        print("  2. 混合结构: 图片和txt标签文件在同一个文件夹中")
+        log_error("错误: 未找到有效的数据集结构")
+        log_info("支持的输入结构:")
+        log_info("  1. 标准结构: dataset/images/ + dataset/labels/")
+        log_info("  2. 混合结构: 图片和txt标签文件在同一个文件夹中")
         return
     
     structure_name = {
@@ -106,19 +106,19 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
         'mixed': '混合结构 (图片和标签在同一文件夹)'
     }.get(structure, '未知结构')
     
-    print(f"📁 检测到输入结构: {structure_name}")
+    log_info(f"检测到输入结构: {structure_name}")
     
     # 查找类别文件
     class_files = find_class_files(base_dir)
     if class_files:
-        print(f"📋 找到类别文件: {', '.join(class_files)}")
+        log_info(f"找到类别文件: {', '.join(class_files)}")
     
     # 确定要创建的分割集合
     splits = ["train", "val"]
     if use_test:
         splits.append("test")
     
-    print(f"📊 划分模式: {len(splits)}个集合 ({', '.join(splits)})")
+    log_info(f"划分模式: {len(splits)}个集合 ({', '.join(splits)})")
 
     if output_format == 1:
         # 格式一: yolo/train/images/, yolo/train/labels/, etc.
@@ -140,7 +140,7 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
         dst_class_path = os.path.join(output_dir, class_file)
         if os.path.exists(src_class_path):
             shutil.copy(src_class_path, dst_class_path)
-            print(f"✓ 复制类别文件: {class_file}")
+            log_info(f"复制类别文件: {class_file}")
 
     # 获取所有标签文件
     if structure == 'mixed':
@@ -165,7 +165,7 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
             # 查找对应的图片文件
             corresponding_image = find_corresponding_image(label_file, images_dir, structure)
             if corresponding_image is None:
-                print(f"警告: 找不到标签文件 {label_file} 对应的图片文件")
+                log_warn(f"找不到标签文件 {label_file} 对应的图片文件")
                 continue
         image_to_classes[corresponding_image] = classes
         for c in classes:
@@ -258,32 +258,32 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
     total_split = sum(len(split_files[split]) for split in splits)
     
     format_desc = "格式一 (train/images/, train/labels/)" if output_format == 1 else "格式二 (images/train/, labels/train/)"
-    print(f"数据集划分完成！输出格式: {format_desc}")
-    print(f"原始总图片数: {total_original}")
-    print(f"划分后总数: {total_split}")
+    log_info(f"数据集划分完成！输出格式: {format_desc}")
+    log_info(f"原始总图片数: {total_original}")
+    log_info(f"划分后总数: {total_split}")
     
     # 显示各集合的统计
     for split in splits:
         files_count = len(split_files[split])
         percentage = files_count / total_original * 100 if total_original > 0 else 0
-        print(f"{split}集: {files_count} 张图片 ({percentage:.1f}%)")
+    log_info(f"{split}集: {files_count} 张图片 ({percentage:.1f}%)")
     
     # 验证数据完整性
     if total_original == total_split:
-        print("✓ 数据完整性验证通过")
+        log_info("数据完整性验证通过")
     else:
-        print(f"✗ 警告: 数据不完整，丢失了 {total_original - total_split} 张图片")
+        log_warn(f"数据不完整，丢失了 {total_original - total_split} 张图片")
     
     # 统计各集合中有标签的图片数量
-    print(f"\n标签图片分布:")
+    log_info(f"\n标签图片分布:")
     for split in splits:
         labeled_count = sum(1 for img in split_files[split] if img in image_to_classes)
-        print(f"{split}集标签图片: {labeled_count}")
-    print(f"总标签图片: {len(image_to_classes)}")
+        log_info(f"{split}集标签图片: {labeled_count}")
+    log_info(f"总标签图片: {len(image_to_classes)}")
     
     # 统计各类别在不同集合中的分布
     if image_to_classes:
-        print(f"\n类别分布统计:")
+        log_info(f"\n类别分布统计:")
         all_classes = set()
         for classes in image_to_classes.values():
             all_classes.update(classes)
@@ -299,7 +299,7 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
             
             total_class = len(class_to_images[class_id])
             class_stats.append(f"总计{total_class}")
-            print(f"类别 {class_id}: {', '.join(class_stats)}")
+            log_info(f"类别 {class_id}: {', '.join(class_stats)}")
 
 
 def main():
@@ -329,7 +329,7 @@ def main():
     if use_test:
         total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
         if abs(total_ratio - 1.0) > 1e-6:
-            print(f"错误: 训练、验证、测试集比例总和应为1.0，当前为{total_ratio}")
+            log_error(f"错误: 训练、验证、测试集比例总和应为1.0，当前为{total_ratio}")
             return
         split_ratios = {
             "train": args.train_ratio,
@@ -339,7 +339,7 @@ def main():
     else:
         total_ratio = args.train_ratio + args.val_ratio
         if abs(total_ratio - 1.0) > 1e-6:
-            print(f"错误: 训练、验证集比例总和应为1.0，当前为{total_ratio}")
+            log_error(f"错误: 训练、验证集比例总和应为1.0，当前为{total_ratio}")
             return
         split_ratios = {
             "train": args.train_ratio,
@@ -348,17 +348,17 @@ def main():
     
     # 验证输入目录
     if not os.path.exists(args.input_dir):
-        print(f"错误: 输入目录 {args.input_dir} 不存在")
+        log_error(f"错误: 输入目录 {args.input_dir} 不存在")
         return
     
     # 检测输入结构
     structure, images_dir, labels_dir = detect_input_structure(args.input_dir)
     
     if structure == 'unknown':
-        print(f"错误: 输入目录 {args.input_dir} 不是有效的数据集结构")
-        print("支持的输入结构:")
-        print("  1. 标准结构: dataset/images/ + dataset/labels/")
-        print("  2. 混合结构: 图片和txt标签文件在同一个文件夹中")
+        log_error(f"错误: 输入目录 {args.input_dir} 不是有效的数据集结构")
+        log_info("支持的输入结构:")
+        log_info("  1. 标准结构: dataset/images/ + dataset/labels/")
+        log_info("  2. 混合结构: 图片和txt标签文件在同一个文件夹中")
         return
     
     # 设置随机种子
@@ -369,23 +369,23 @@ def main():
         'mixed': '混合结构 (图片和标签在同一文件夹)'
     }.get(structure, '未知结构')
     
-    print(f"开始划分数据集...")
-    print(f"输入目录: {args.input_dir}")
-    print(f"输入结构: {structure_name}")
-    print(f"输出目录: {args.output_dir}")
-    print(f"输出格式: {args.output_format} ({'格式一' if args.output_format == 1 else '格式二'})")
-    print(f"划分模式: {'2个集合 (train/val)' if args.no_test else '3个集合 (train/val/test)'}")
+    log_info("开始划分数据集...")
+    log_info(f"输入目录: {args.input_dir}")
+    log_info(f"输入结构: {structure_name}")
+    log_info(f"输出目录: {args.output_dir}")
+    log_info(f"输出格式: {args.output_format} ({'格式一' if args.output_format == 1 else '格式二'})")
+    log_info(f"划分模式: {'2个集合 (train/val)' if args.no_test else '3个集合 (train/val/test)'}")
     
     if use_test:
-        print(f"训练集比例: {args.train_ratio}")
-        print(f"验证集比例: {args.val_ratio}")
-        print(f"测试集比例: {args.test_ratio}")
+        log_info(f"训练集比例: {args.train_ratio}")
+        log_info(f"验证集比例: {args.val_ratio}")
+        log_info(f"测试集比例: {args.test_ratio}")
     else:
-        print(f"训练集比例: {args.train_ratio}")
-        print(f"验证集比例: {args.val_ratio}")
+        log_info(f"训练集比例: {args.train_ratio}")
+        log_info(f"验证集比例: {args.val_ratio}")
     
-    print(f"随机种子: {args.seed}")
-    print("-" * 50)
+    log_info(f"随机种子: {args.seed}")
+    log_info("-" * 50)
     
     # 执行数据集划分
     split_dataset(args.input_dir, args.output_dir, split_ratios, args.output_format, use_test)

@@ -9,7 +9,7 @@ import os
 import sys
 import cv2
 import argparse
-from utils.logging_utils import tee_stdout_stderr
+from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 _LOG_FILE = tee_stdout_stderr('logs')
 import numpy as np
 from pathlib import Path
@@ -43,10 +43,10 @@ class YOLODatasetViewer:
         self.scan_dataset()
         
         if not self.image_files:
-            print("❌ 未找到任何有标注的图片文件！")
+            log_error("未找到任何有标注的图片文件！")
             sys.exit(1)
             
-        print(f"📋 找到 {len(self.image_files)} 张有标注的图片")
+        log_info(f"找到 {len(self.image_files)} 张有标注的图片")
         
         # 根据参数决定是否初始化matplotlib界面
         if setup_gui:
@@ -61,10 +61,10 @@ class YOLODatasetViewer:
                         class_name = line.strip()
                         if class_name:
                             self.class_names[idx] = class_name
-                print(f"✅ 从指定文件加载类别名称: {class_names_file}")
+                log_info(f"从指定文件加载类别名称: {class_names_file}")
                 return
             except Exception as e:
-                print(f"⚠️  读取指定类别文件失败: {e}")
+                log_warn(f"读取指定类别文件失败: {e}")
         
         # 自动查找类别文件
         possible_names = ["classes.txt", "names.txt", "class.names", "labels.txt", "data.yaml"]
@@ -92,21 +92,21 @@ class YOLODatasetViewer:
                                 if class_name:
                                     self.class_names[idx] = class_name
                     
-                    print(f"✅ 加载类别文件: {class_file}")
+                    log_info(f"加载类别文件: {class_file}")
                     return
                 except Exception as e:
-                    print(f"⚠️  读取类别文件失败: {e}")
+                    log_warn(f"读取类别文件失败: {e}")
                     continue
         
-        print("⚠️  未找到类别名称文件，将显示类别ID")
+        log_warn("未找到类别名称文件，将显示类别ID")
     
     def scan_dataset(self):
         """扫描数据集，找到所有有标注的图片"""
-        print("🔍 扫描数据集...")
-        
+        log_info("扫描数据集...")
+
         # 支持的图片格式
         img_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
-        
+
         # 查找所有可能的目录结构
         possible_dirs = [
             self.dataset_path,  # 根目录
@@ -115,11 +115,11 @@ class YOLODatasetViewer:
             self.dataset_path / 'val' / 'images',    # val/images
             self.dataset_path / 'test' / 'images',   # test/images
         ]
-        
+
         for img_dir in possible_dirs:
             if not img_dir.exists():
                 continue
-                
+
             # 对应的标签目录
             if img_dir.name == 'images':
                 label_dir = img_dir.parent / 'labels'
@@ -127,18 +127,18 @@ class YOLODatasetViewer:
                 label_dir = img_dir / 'labels'
                 if not label_dir.exists():
                     label_dir = self.dataset_path / 'labels'
-            
+
             if not label_dir.exists():
                 continue
-            
-            print(f"📂 扫描目录: {img_dir}")
-            print(f"📂 标签目录: {label_dir}")
-            
+
+            log_info(f"扫描目录: {img_dir}")
+            log_info(f"标签目录: {label_dir}")
+
             # 查找有标注的图片
             for img_file in img_dir.iterdir():
                 if img_file.suffix.lower() in img_extensions:
                     label_file = label_dir / f"{img_file.stem}.txt"
-                    
+
                     if label_file.exists():
                         # 检查标注文件是否非空
                         try:
@@ -151,8 +151,8 @@ class YOLODatasetViewer:
                                         'set_name': img_dir.parent.name if img_dir.name == 'images' else 'dataset'
                                     })
                         except Exception as e:
-                            print(f"⚠️  读取标注文件失败: {label_file}, {e}")
-        
+                            log_warn(f"读取标注文件失败: {label_file}, {e}")
+
         # 按路径排序
         self.image_files.sort(key=lambda x: x['image_path'])
     
@@ -177,7 +177,7 @@ class YOLODatasetViewer:
                             'height': height
                         })
         except Exception as e:
-            print(f"❌ 读取标注失败: {e}")
+            log_error(f"读取标注失败: {e}")
         
         return annotations
     
@@ -225,8 +225,8 @@ class YOLODatasetViewer:
         """
         if not filter_classes:
             return
-            
-        print(f"🔍 按类别筛选: {filter_classes}")
+        
+        log_info(f"按类别筛选: {filter_classes}")
         
         # 解析筛选类别
         target_classes = set()
@@ -250,12 +250,12 @@ class YOLODatasetViewer:
                 filtered_files.append(img_file)
         
         if not filtered_files:
-            print(f"❌ 未找到包含指定类别的图片！")
+            log_warn("未找到包含指定类别的图片！")
             return
         
         self.image_files = filtered_files
         self.current_index = 0
-        print(f"✅ 筛选后找到 {len(filtered_files)} 张图片")
+        log_info(f"筛选后找到 {len(filtered_files)} 张图片")
         
         # 如果GUI已经创建，更新窗口标题
         if hasattr(self, 'fig'):
@@ -329,11 +329,11 @@ class YOLODatasetViewer:
         try:
             img = cv2.imread(img_path)
             if img is None:
-                print(f"❌ 无法读取图片: {img_path}")
+                log_error(f"无法读取图片: {img_path}")
                 return
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         except Exception as e:
-            print(f"❌ 读取图片失败: {e}")
+            log_error(f"读取图片失败: {e}")
             return
         
         # 读取标注
@@ -360,12 +360,12 @@ class YOLODatasetViewer:
         plt.draw()
         
         # 打印当前图片信息
-        print(f"\n📸 [{self.current_index + 1}/{len(self.image_files)}] {img_name}")
-        print(f"📂 路径: {img_path}")
-        print(f"📊 标注框数量: {len(annotations)}")
+        log_info(f"\n📸 [{self.current_index + 1}/{len(self.image_files)}] {img_name}")
+        log_info(f"路径: {img_path}")
+        log_info(f"标注框数量: {len(annotations)}")
         
         if annotations:
-            print("📋 标注详情:")
+            log_info("标注详情:")
             class_counts = {}
             for ann in annotations:
                 class_id = ann['class_id']
@@ -373,7 +373,7 @@ class YOLODatasetViewer:
                 class_counts[class_name] = class_counts.get(class_name, 0) + 1
             
             for class_name, count in class_counts.items():
-                print(f"   - {class_name}: {count} 个")
+                log_info(f"   - {class_name}: {count} 个")
     
     def prev_image(self, event):
         """显示上一张图片"""
@@ -381,7 +381,7 @@ class YOLODatasetViewer:
             self.current_index -= 1
             self.show_current_image()
         else:
-            print("📍 已经是第一张图片")
+            log_info("已经是第一张图片")
     
     def next_image(self, event):
         """显示下一张图片"""
@@ -389,7 +389,7 @@ class YOLODatasetViewer:
             self.current_index += 1
             self.show_current_image()
         else:
-            print("📍 已经是最后一张图片")
+            log_info("已经是最后一张图片")
     
     def random_image(self, event):
         """随机显示一张图片"""
@@ -398,11 +398,11 @@ class YOLODatasetViewer:
     
     def show_info(self, event):
         """显示数据集信息"""
-        print(f"\n{'='*60}")
-        print(f"{'数据集信息':^56}")
-        print(f"{'='*60}")
-        print(f"📂 数据集路径: {self.dataset_path}")
-        print(f"📊 图片总数: {len(self.image_files)}")
+        log_info(f"\n{'='*60}")
+        log_info(f"{'数据集信息':^56}")
+        log_info(f"{'='*60}")
+        log_info(f"数据集路径: {self.dataset_path}")
+        log_info(f"图片总数: {len(self.image_files)}")
         
         # 统计各数据集的数量
         set_counts = {}
@@ -410,24 +410,24 @@ class YOLODatasetViewer:
             set_name = img_file['set_name']
             set_counts[set_name] = set_counts.get(set_name, 0) + 1
         
-        print(f"📈 数据集分布:")
+        log_info("数据集分布:")
         for set_name, count in set_counts.items():
-            print(f"   - {set_name}: {count} 张")
+            log_info(f"   - {set_name}: {count} 张")
         
         # 统计类别分布
         if self.class_names:
-            print(f"🏷️  类别数量: {len(self.class_names)}")
-            print(f"📋 类别列表:")
+            log_info(f"类别数量: {len(self.class_names)}")
+            log_info("类别列表:")
             for class_id, class_name in sorted(self.class_names.items()):
-                print(f"   - {class_id}: {class_name}")
+                log_info(f"   - {class_id}: {class_name}")
         else:
-            print("⚠️  未加载类别名称文件")
+            log_warn("未加载类别名称文件")
     
     def show_class_statistics(self, event):
         """显示类别统计信息"""
-        print(f"\n{'='*60}")
-        print(f"{'类别统计信息':^56}")
-        print(f"{'='*60}")
+        log_info(f"\n{'='*60}")
+        log_info(f"{'类别统计信息':^56}")
+        log_info(f"{'='*60}")
         
         # 统计每个类别的出现次数
         class_counts = {}
@@ -441,26 +441,26 @@ class YOLODatasetViewer:
                 total_annotations += 1
         
         if not class_counts:
-            print("❌ 当前筛选结果中没有标注信息！")
+            log_warn("当前筛选结果中没有标注信息！")
             return
         
-        print(f"📊 当前显示图片数: {len(self.image_files)}")
-        print(f"📊 标注框总数: {total_annotations}")
-        print(f"📊 类别数: {len(class_counts)}")
+        log_info(f"当前显示图片数: {len(self.image_files)}")
+        log_info(f"标注框总数: {total_annotations}")
+        log_info(f"类别数: {len(class_counts)}")
         
-        print(f"\n📈 类别分布:")
-        print(f"{'类别ID':<8} {'类别名称':<20} {'数量':<8} {'占比':<8}")
-        print("-" * 50)
+        log_info("\n📈 类别分布:")
+        log_info(f"{'类别ID':<8} {'类别名称':<20} {'数量':<8} {'占比':<8}")
+        log_info("-" * 50)
         
         # 按数量排序显示
         for class_id, count in sorted(class_counts.items(), key=lambda x: x[1], reverse=True):
             class_name = self.class_names.get(class_id, f"Class_{class_id}")
             percentage = (count / total_annotations) * 100
-            print(f"{class_id:<8} {class_name:<20} {count:<8} {percentage:<8.1f}%")
+            log_info(f"{class_id:<8} {class_name:<20} {count:<8} {percentage:<8.1f}%")
     
     def reset_filter(self, event):
         """重置筛选，显示所有图片"""
-        print("🔄 正在重置筛选...")
+        log_info("正在重置筛选...")
         original_count = len(self.image_files)
         
         # 重新扫描数据集
@@ -472,9 +472,9 @@ class YOLODatasetViewer:
         
         self.show_current_image()
         
-        print(f"✅ 筛选已重置，显示全部 {len(self.image_files)} 张图片")
+        log_info(f"筛选已重置，显示全部 {len(self.image_files)} 张图片")
         if len(self.image_files) != original_count:
-            print(f"📊 筛选前: {original_count} 张 → 重置后: {len(self.image_files)} 张")
+            log_info(f"筛选前: {original_count} 张 → 重置后: {len(self.image_files)} 张")
 
     def on_key_press(self, event):
         """处理键盘事件"""
@@ -493,19 +493,19 @@ class YOLODatasetViewer:
     
     def start(self):
         """启动查看器"""
-        print(f"\n{'='*60}")
-        print(f"{'YOLO数据集查看器':^56}")
-        print(f"{'='*60}")
-        print("🔧 操作说明:")
-        print("   • 按钮: 上一张/下一张/随机/统计/重置")
-        print("   • 快捷键: ← → (A D) 切换, R 随机, T 统计, C 重置")
-        print("   • 按 Q/ESC 退出程序")
-        print(f"{'='*60}\n")
-        
+        log_info(f"\n{'='*60}")
+        log_info(f"{'YOLO数据集查看器':^56}")
+        log_info(f"{'='*60}")
+        log_info("操作说明:")
+        log_info("   • 按钮: 上一张/下一张/随机/统计/重置")
+        log_info("   • 快捷键: ← → (A D) 切换, R 随机, T 统计, C 重置")
+        log_info("   • 按 Q/ESC 退出程序")
+        log_info(f"{'='*60}\n")
+
         try:
             plt.show()
         except KeyboardInterrupt:
-            print("\n👋 程序已退出")
+            log_info("程序已退出")
 
 
 def batch_view_mode(dataset_path, class_names_file=None, num_samples=9, filter_classes=None):
@@ -517,13 +517,13 @@ def batch_view_mode(dataset_path, class_names_file=None, num_samples=9, filter_c
         num_samples: 显示样本数量
         filter_classes: 筛选的类别列表 (类别ID或名称)
     """
-    print(f"🔍 批量查看模式: 显示 {num_samples} 张图片")
+    log_info(f"批量查看模式: 显示 {num_samples} 张图片")
     
     # 创建临时查看器来扫描数据集（不创建GUI）
     viewer = YOLODatasetViewer(dataset_path, class_names_file, setup_gui=False)
     
     if len(viewer.image_files) == 0:
-        print("❌ 未找到任何有标注的图片！")
+        log_error("未找到任何有标注的图片！")
         return
     
     # 如果指定了类别筛选
@@ -619,7 +619,7 @@ def batch_view_mode(dataset_path, class_names_file=None, num_samples=9, filter_c
     plt.subplots_adjust(top=0.92)  # 为总标题留出空间
     plt.show()
     
-    print(f"✅ 已展示 {len(samples)} 个样本的可视化结果")
+    log_info(f"已展示 {len(samples)} 个样本的可视化结果")
 
 
 def main():
@@ -674,14 +674,14 @@ def main():
     
     # 检查数据集路径
     if not os.path.exists(args.dataset):
-        print(f"❌ 数据集路径不存在: {args.dataset}")
+        log_error(f"数据集路径不存在: {args.dataset}")
         sys.exit(1)
     
     # 解析筛选类别
     filter_classes = None
     if args.filter_classes:
         filter_classes = [cls.strip() for cls in args.filter_classes.split(',')]
-        print(f"🔍 将筛选类别: {filter_classes}")
+        log_info(f"将筛选类别: {filter_classes}")
     
     try:
         if args.batch:
@@ -700,9 +700,9 @@ def main():
             viewer.start()
     
     except KeyboardInterrupt:
-        print("\n👋 程序已退出")
+        log_info("程序已退出")
     except Exception as e:
-        print(f"❌ 程序运行出错: {e}")
+        log_error(f"程序运行出错: {e}")
         import traceback
         traceback.print_exc()
 

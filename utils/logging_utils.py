@@ -6,6 +6,11 @@ from typing import Optional, TextIO
 
 
 class _Tee:
+    """将标准输出/错误复制写入日志文件与控制台.
+
+    此类作为 file-like 包装器, 同时把写入内容写到原始流与日志文件中.
+    """
+
     def __init__(self, original: TextIO, file: TextIO):
         self._orig = original
         self._file = file
@@ -38,9 +43,9 @@ class _Tee:
 
 
 def tee_stdout_stderr(log_dir: str | Path = 'logs', script_basename: Optional[str] = None) -> str:
-    """
-    Duplicate stdout/stderr to a timestamped log file under `log_dir`.
-    Returns the absolute path to the log file.
+    """把标准输出与标准错误复制到日志文件并保留原有控制台输出.
+
+    会在 log_dir 下创建按时间戳命名的日志文件, 返回该日志文件的绝对路径.
     """
     base = Path(log_dir)
     base.mkdir(parents=True, exist_ok=True)
@@ -67,3 +72,18 @@ def tee_stdout_stderr(log_dir: str | Path = 'logs', script_basename: Optional[st
     sys.stderr = _Tee(sys.stderr, f)  # type: ignore
 
     return str(log_path)
+
+
+def log_info(message: str) -> None:
+    """输出信息级别日志到控制台与日志文件, 统一前缀为 '[INFO] '."""
+    print(f"[INFO] {message}")
+
+
+def log_warn(message: str) -> None:
+    """输出警告级别日志到控制台与日志文件, 统一前缀为 '[WARN] '."""
+    print(f"[WARN] {message}")
+
+
+def log_error(message: str) -> None:
+    """输出错误级别日志到控制台与日志文件, 统一前缀为 '[ERROR] '."""
+    print(f"[ERROR] {message}")

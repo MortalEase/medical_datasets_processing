@@ -12,7 +12,7 @@ import json
 import shutil
 import random
 import argparse
-from utils.logging_utils import tee_stdout_stderr
+from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 _LOG_FILE = tee_stdout_stderr('logs')
 
 import os
@@ -107,7 +107,7 @@ def stratified_split_images(coco_data, train_ratio=0.8, val_ratio=0.1, test_rati
     
     # 如果没有标注，简单随机划分
     if not coco_data['annotations']:
-        print("⚠️ 数据集中没有标注，将进行简单随机划分")
+        log_warn("数据集中没有标注，将进行简单随机划分")
         random.shuffle(all_image_ids)
         
         train_count = int(len(all_image_ids) * train_ratio)
@@ -154,7 +154,7 @@ def stratified_split_images(coco_data, train_ratio=0.8, val_ratio=0.1, test_rati
     # 处理没有标注的图像（背景图像）
     unassigned_images = [img_id for img_id in all_image_ids if img_id not in assigned_images]
     if unassigned_images:
-        print(f"发现 {len(unassigned_images)} 张无标注图像，进行随机分配")
+        log_info(f"发现 {len(unassigned_images)} 张无标注图像，进行随机分配")
         random.shuffle(unassigned_images)
         
         bg_train_count = int(len(unassigned_images) * train_ratio)
@@ -230,9 +230,9 @@ def copy_images(image_list, src_images_dir, dst_images_dir):
             shutil.copy2(src_path, dst_path)
             copied_count += 1
         else:
-            print(f"⚠️ 图像文件不存在: {src_path}")
+            log_warn(f"图像文件不存在: {src_path}")
     
-    print(f"✅ 复制了 {copied_count}/{len(image_list)} 张图像")
+    log_info(f"复制了 {copied_count}/{len(image_list)} 张图像")
 
 
 def print_split_statistics(splits, coco_data):
@@ -245,28 +245,28 @@ def print_split_statistics(splits, coco_data):
     """
     analysis = analyze_dataset_distribution(coco_data)
     
-    print("\n=== 数据集划分统计 ===")
-    print(f"原始数据集:")
-    print(f"  - 总图像数: {analysis['total_images']}")
-    print(f"  - 总标注数: {analysis['total_annotations']}")
-    print(f"  - 类别数: {len(coco_data['categories'])}")
+    log_info("\n=== 数据集划分统计 ===")
+    log_info(f"原始数据集:")
+    log_info(f"  - 总图像数: {analysis['total_images']}")
+    log_info(f"  - 总标注数: {analysis['total_annotations']}")
+    log_info(f"  - 类别数: {len(coco_data['categories'])}")
     
     for split_name, image_ids in splits.items():
         split_annotations = [ann for ann in coco_data['annotations'] 
                            if ann['image_id'] in image_ids]
-        
+
         # 统计类别分布
         category_counts = Counter(ann['category_id'] for ann in split_annotations)
-        
-        print(f"\n{split_name.upper()}集:")
-        print(f"  - 图像数: {len(image_ids)} ({len(image_ids)/analysis['total_images']*100:.1f}%)")
-        print(f"  - 标注数: {len(split_annotations)}")
-        
+
+        log_info(f"\n{split_name.upper()}集:")
+        log_info(f"  - 图像数: {len(image_ids)} ({len(image_ids)/analysis['total_images']*100:.1f}%)")
+        log_info(f"  - 标注数: {len(split_annotations)}")
+
         if category_counts:
-            print(f"  - 类别分布:")
+            log_info(f"  - 类别分布:")
             for cat in coco_data['categories']:
                 count = category_counts.get(cat['id'], 0)
-                print(f"    * {cat['name']}: {count}")
+                log_info(f"    * {cat['name']}: {count}")
 
 
 def split_coco_dataset(input_dir, output_dir, split_ratios, random_state=42):
@@ -292,16 +292,16 @@ def split_coco_dataset(input_dir, output_dir, split_ratios, random_state=42):
     if not annotation_file.exists():
         raise FileNotFoundError(f"标注文件不存在: {annotation_file}")
     
-    print(f"加载COCO标注文件: {annotation_file}")
+    log_info(f"加载COCO标注文件: {annotation_file}")
     coco_data = load_coco_annotations(annotation_file)
     
-    print(f"原始数据集包含:")
-    print(f"  - 图像数: {len(coco_data['images'])}")
-    print(f"  - 标注数: {len(coco_data['annotations'])}")
-    print(f"  - 类别数: {len(coco_data['categories'])}")
+    log_info(f"原始数据集包含:")
+    log_info(f"  - 图像数: {len(coco_data['images'])}")
+    log_info(f"  - 标注数: {len(coco_data['annotations'])}")
+    log_info(f"  - 类别数: {len(coco_data['categories'])}")
     
     # 执行划分
-    print("\n开始执行数据集划分...")
+    log_info("\n开始执行数据集划分...")
     splits = stratified_split_images(
         coco_data, 
         train_ratio=split_ratios['train'],
@@ -314,33 +314,33 @@ def split_coco_dataset(input_dir, output_dir, split_ratios, random_state=42):
     print_split_statistics(splits, coco_data)
     
     # 创建输出目录并复制文件
-    print(f"\n创建输出目录: {output_path}")
+    log_info(f"\n创建输出目录: {output_path}")
     output_path.mkdir(parents=True, exist_ok=True)
     
     for split_name, image_ids in splits.items():
         if not image_ids:
-            print(f"⚠️ {split_name}集为空，跳过")
+            log_warn(f"{split_name}集为空，跳过")
             continue
-            
-        print(f"\n处理 {split_name} 数据集...")
-        
+
+        log_info(f"\n处理 {split_name} 数据集...")
+
         # 创建划分目录
         split_dir = output_path / split_name
         split_images_dir = split_dir / 'images'
         split_dir.mkdir(exist_ok=True)
-        
+
         # 创建划分后的COCO数据
         split_coco_data = create_split_coco_data(coco_data, image_ids, split_name)
-        
+
         # 保存标注文件
         split_annotation_file = split_dir / 'annotations.json'
         with open(split_annotation_file, 'w', encoding='utf-8') as f:
             json.dump(split_coco_data, f, indent=2, ensure_ascii=False)
-        
+
         # 复制图像文件
         copy_images(split_coco_data['images'], str(images_dir), str(split_images_dir))
-        
-        print(f"✅ {split_name} 数据集处理完成")
+
+        log_info(f"{split_name} 数据集处理完成")
     
     # 复制额外文件
     for extra_file in ['classes.txt', 'dataset_info.json']:
@@ -348,21 +348,21 @@ def split_coco_dataset(input_dir, output_dir, split_ratios, random_state=42):
         if src_file.exists():
             dst_file = output_path / extra_file
             shutil.copy2(src_file, dst_file)
-            print(f"✅ 复制额外文件: {extra_file}")
+            log_info(f"复制额外文件: {extra_file}")
     
-    print(f"\n🎉 数据集划分完成!")
-    print(f"输出目录: {output_path}")
+    log_info(f"\n数据集划分完成!")
+    log_info(f"输出目录: {output_path}")
     
     # 显示最终目录结构
-    print("\n最终目录结构:")
-    print(f"{output_path.name}/")
+    log_info("\n最终目录结构:")
+    log_info(f"{output_path.name}/")
     for split_name in ['train', 'val', 'test']:
         split_dir = output_path / split_name
         if split_dir.exists():
             image_count = len(list((split_dir / 'images').glob('*'))) if (split_dir / 'images').exists() else 0
-            print(f"├── {split_name}/")
-            print(f"│   ├── images/ ({image_count} 张图像)")
-            print(f"│   └── annotations.json")
+            log_info(f"├── {split_name}/")
+            log_info(f"│   ├── images/ ({image_count} 张图像)")
+            log_info(f"│   └── annotations.json")
     
     # 列出额外文件
     extra_files = [f.name for f in output_path.glob('*.txt') if f.is_file()] + \
@@ -371,7 +371,7 @@ def split_coco_dataset(input_dir, output_dir, split_ratios, random_state=42):
     if extra_files:
         for i, filename in enumerate(extra_files):
             prefix = "└──" if i == len(extra_files) - 1 else "├──"
-            print(f"{prefix} {filename}")
+            log_info(f"{prefix} {filename}")
 
 
 def main():
@@ -427,12 +427,12 @@ def main():
     # 验证比例总和
     total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
     if abs(total_ratio - 1.0) > 1e-6:
-        print(f"❌ 错误: 训练、验证、测试集比例总和应为1.0，当前为{total_ratio}")
+        log_error(f"错误: 训练、验证、测试集比例总和应为1.0，当前为{total_ratio}")
         return
     
     # 验证输入目录
     if not os.path.exists(args.input_dir):
-        print(f"❌ 错误: 输入目录 {args.input_dir} 不存在")
+        log_error(f"错误: 输入目录 {args.input_dir} 不存在")
         return
     
     # 构建比例字典
@@ -442,14 +442,14 @@ def main():
         'test': args.test_ratio
     }
     
-    print(f"=== COCO数据集划分工具 ===")
-    print(f"输入目录: {args.input_dir}")
-    print(f"输出目录: {args.output_dir}")
-    print(f"训练集比例: {args.train_ratio}")
-    print(f"验证集比例: {args.val_ratio}")
-    print(f"测试集比例: {args.test_ratio}")
-    print(f"随机种子: {args.seed}")
-    print("-" * 50)
+    log_info(f"=== COCO数据集划分工具 ===")
+    log_info(f"输入目录: {args.input_dir}")
+    log_info(f"输出目录: {args.output_dir}")
+    log_info(f"训练集比例: {args.train_ratio}")
+    log_info(f"验证集比例: {args.val_ratio}")
+    log_info(f"测试集比例: {args.test_ratio}")
+    log_info(f"随机种子: {args.seed}")
+    log_info("-" * 50)
     
     try:
         # 执行数据集划分
@@ -461,7 +461,7 @@ def main():
         )
         
     except Exception as e:
-        print(f"❌ 划分过程中发生错误: {e}")
+        log_error(f"划分过程中发生错误: {e}")
         import traceback
         traceback.print_exc()
 
