@@ -16,6 +16,7 @@ from collections import defaultdict
 from utils.yolo_utils import (
     get_image_extensions,
     list_possible_class_files,
+    read_class_names,
 )
 
 
@@ -134,23 +135,42 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
             for split in splits:
                 os.makedirs(os.path.join(output_dir, data_type, split), exist_ok=True)
     
-    # 复制类别文件到输出目录根目录
+    # 复制类别文件到输出目录根目录（优先根目录，缺失则尝试 labels/）
+    labels_dir_for_copy = None
+    if structure == 'standard':
+        labels_dir_for_copy = labels_dir
+    copied_set = set()
     for class_file in class_files:
         src_class_path = os.path.join(base_dir, class_file)
         dst_class_path = os.path.join(output_dir, class_file)
         if os.path.exists(src_class_path):
             shutil.copy(src_class_path, dst_class_path)
+            copied_set.add(class_file)
             log_info(f"复制类别文件: {class_file}")
+    # 若根目录未包含但 labels/ 下存在类别文件，则也复制一份到输出根目录
+    if labels_dir_for_copy and os.path.isdir(labels_dir_for_copy):
+        for candidate in ['classes.txt', 'obj.names', 'names.txt', 'data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml']:
+            if candidate in copied_set:
+                continue
+            p = os.path.join(labels_dir_for_copy, candidate)
+            if os.path.isfile(p):
+                shutil.copy(p, os.path.join(output_dir, candidate))
+                log_info(f"复制类别文件: {candidate}")
 
     # 获取所有标签文件
     if structure == 'mixed':
         # 混合结构：排除类别文件
         all_files = os.listdir(labels_dir)
-        label_files = [f for f in all_files if f.endswith(".txt") and 
-                      f not in ['classes.txt', 'obj.names', 'names.txt']]
+        label_files = [
+            f for f in all_files
+            if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']
+        ]
     else:
         # 标准结构：labels目录下的所有txt文件
-        label_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+        label_files = [
+            f for f in os.listdir(labels_dir)
+            if f.endswith(".txt") and f not in ['classes.txt', 'obj.names', 'names.txt']
+        ]
         
     # 构建图片-类别映射
     image_to_classes = {}  # {image_file: [class1, class2, ...]}
@@ -266,7 +286,7 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
     for split in splits:
         files_count = len(split_files[split])
         percentage = files_count / total_original * 100 if total_original > 0 else 0
-    log_info(f"{split}集: {files_count} 张图片 ({percentage:.1f}%)")
+        log_info(f"{split}集: {files_count} 张图片 ({percentage:.1f}%)")
     
     # 验证数据完整性
     if total_original == total_split:
@@ -300,6 +320,83 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
             total_class = len(class_to_images[class_id])
             class_stats.append(f"总计{total_class}")
             log_info(f"类别 {class_id}: {', '.join(class_stats)}")
+
+    # 生成标准 data.yaml
+    try:
+        # 构造 paths（相对于输出根目录）
+        if output_format == 1:
+            train_rel = 'train/images'
+            val_rel = 'val/images'
+            test_rel = 'test/images'
+        else:  # format 2
+            train_rel = 'images/train'
+            val_rel = 'images/val'
+            test_rel = 'images/test'
+
+        data_yaml = {
+            'path': os.path.normpath(output_dir).replace('\\', '/'),
+            'train': train_rel,
+            'val': val_rel,
+        }
+        if use_test:
+            data_yaml['test'] = test_rel
+
+        # 推断/读取类别名
+        names: list[str] = []
+        # 优先读取输入根目录下的 yaml 或 txt
+        for candidate in ['data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml', 'classes.txt', 'obj.names', 'names.txt']:
+            p = os.path.join(base_dir, candidate)
+            if os.path.isfile(p):
+                names = read_class_names(p)
+                if names:
+                    break
+        # 再尝试 labels/ 目录
+        if not names and structure in ('standard', 'mixed') and os.path.isdir(labels_dir):
+            for candidate in ['data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml', 'classes.txt', 'obj.names', 'names.txt']:
+                p = os.path.join(labels_dir, candidate)
+                if os.path.isfile(p):
+                    names = read_class_names(p)
+                    if names:
+                        break
+
+        # 若仍无 names，则根据出现的类别ID生成占位名
+        if not names:
+            if image_to_classes:
+                all_ids = set()
+                for s in image_to_classes.values():
+                    all_ids.update(s)
+                max_id = max(all_ids) if all_ids else -1
+                names = [f"Class_{i}" for i in range(max_id + 1)]
+            else:
+                names = []
+
+        data_yaml['nc'] = len(names)
+        data_yaml['names'] = names
+
+        out_yaml_path = os.path.join(output_dir, 'data.yaml')
+        # 手写 YAML，避免依赖外部库
+        def q(s: str) -> str:
+            s = str(s).replace('\\', '/')
+            if any(ch in s for ch in [':', '#', '"', '\'', ',', '[', ']', '{', '}', ' ']):
+                return '"' + s.replace('"', '\\"') + '"'
+            return s
+        lines = []
+        lines.append(f"path: {q(data_yaml['path'])}")
+        lines.append(f"train: {q(data_yaml['train'])}")
+        lines.append(f"val: {q(data_yaml['val'])}")
+        if 'test' in data_yaml:
+            lines.append(f"test: {q(data_yaml['test'])}")
+        lines.append(f"nc: {len(names)}")
+        if names:
+            names_quoted = ', '.join(q(n) for n in names)
+            lines.append(f"names: [{names_quoted}]")
+        else:
+            lines.append("names: []")
+        with open(out_yaml_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines) + '\n')
+        log_info(f"已生成标准 data.yaml -> {out_yaml_path}")
+    except Exception as e:
+        log_warn(f"生成 data.yaml 失败: {e}")
 
 
 def main():
