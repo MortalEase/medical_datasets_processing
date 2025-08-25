@@ -172,6 +172,8 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=None):
     """
     if img_exts is None:
         img_exts = get_image_extensions()
+    # 非标注类文本文件(应忽略)
+    excluded_txts = {"classes.txt", "names.txt", "obj.names", "data.yaml", "data.yml"}
     
     # 处理混合结构（图片和标签在同一目录）
     if img_dir == label_dir:
@@ -194,9 +196,8 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=None):
         # 获取文件名集合（不含扩展名）
         img_stems = {Path(f).stem for f in os.listdir(img_dir)
                      if Path(f).suffix.lower() in img_exts}
-
         label_stems = {Path(f).stem for f in os.listdir(label_dir)
-                       if Path(f).suffix.lower() == '.txt'}
+                       if Path(f).suffix.lower() == '.txt' and f not in excluded_txts}
 
     # 计算差异集合
     missing_labels = img_stems - label_stems
@@ -211,8 +212,11 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=None):
                 missing_files.append(str(f))
                 break
 
-    redundant_files = [str(Path(label_dir) / (stem + '.txt'))
-                       for stem in redundant_labels]
+    redundant_files = [
+        str(Path(label_dir) / (stem + '.txt'))
+        for stem in redundant_labels
+        if (stem + '.txt') not in excluded_txts
+    ]
 
     return missing_files, redundant_files
 
