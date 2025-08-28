@@ -76,14 +76,23 @@ def tee_stdout_stderr(log_dir: str | Path = 'logs', script_basename: Optional[st
 
 def log_info(message: str) -> None:
     """输出信息级别日志到控制台与日志文件, 统一前缀为 '[INFO] '."""
+    if message is None or str(message).strip() == "":
+        print("")
+        return
     print(f"[INFO] {message}")
 
 
 def log_warn(message: str) -> None:
     """输出警告级别日志到控制台与日志文件, 统一前缀为 '[WARN] '."""
+    if message is None or str(message).strip() == "":
+        print("")
+        return
     print(f"[WARN] {message}")
 
 
 def log_error(message: str) -> None:
     """输出错误级别日志到控制台与日志文件, 统一前缀为 '[ERROR] '."""
+    if message is None or str(message).strip() == "":
+        print("")
+        return
     print(f"[ERROR] {message}")
