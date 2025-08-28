@@ -223,21 +223,24 @@ def check_yolo_dataset(img_dir, label_dir, img_exts=None):
 
 def generate_report(split_name, missing, redundant):
     """生成检查报告"""
-    log_info(f"\n{'=' * 20} {split_name} 检查报告 {'=' * 20}")
+    print("")
+    log_info(f"{'=' * 20} {split_name} 检查报告 {'=' * 20}")
     log_info(f"缺失标注文件: {len(missing)} 个")
     log_info(f"冗余标注文件: {len(redundant)} 个")
 
     if missing:
-        log_info("\n[ 缺失标注的图片 ]")
+        print("")
+        log_info("[ 缺失标注的图片 ]")
         for f in missing[:5]:  # 最多显示前5个
-            print(f"  ! {os.path.basename(f)}")
+            log_info(f"  - {os.path.basename(f)}")
         if len(missing) > 5:
             log_info(f"  ...（还有{len(missing)-5}个）")
 
     if redundant:
-        log_info("\n[ 冗余的标注文件 ]")
+        print("")
+        log_info("[ 冗余的标注文件 ]")
         for f in redundant[:5]:
-            print(f"  x {os.path.basename(f)}")
+            log_info(f"  - {os.path.basename(f)}")
         if len(redundant) > 5:
             log_info(f"  ...（还有{len(redundant)-5}个）")
 
@@ -346,8 +349,9 @@ def create_basic_stats_table(all_stats):
         f"{total_avg_boxes:.2f}"
     ])
     
-    log_info(f"\n📊 数据集基本统计信息:")
-    print(table)
+    print("")
+    log_info("数据集基本统计信息:")
+    print(str(table))
 
 
 def create_class_distribution_table(all_stats, class_names):
@@ -358,7 +362,7 @@ def create_class_distribution_table(all_stats, class_names):
         all_class_ids.update(stats[3].keys())
     
     if not all_class_ids:
-        log_warn("\n没有找到任何类别标注")
+        log_warn("没有找到任何类别标注")
         return
     
     all_class_ids = sorted(all_class_ids)
@@ -408,8 +412,9 @@ def create_class_distribution_table(all_stats, class_names):
     total_row.append(f"{grand_total}(100.0%)")
     table.add_row(total_row)
     
-    log_info(f"\n📈 类别分布统计表:")
-    print(table)
+    print("")
+    log_info("类别分布统计表:")
+    print(str(table))
 
 
 def analyze_dataset(dataset_dir, show_stats=False):
@@ -440,11 +445,11 @@ def analyze_dataset(dataset_dir, show_stats=False):
         'unknown': '未知格式'
     }.get(structure, '未知格式')
     
-    print(f"📁 检测到数据集结构: {structure_name}")
+    log_info(f"检测到数据集结构: {structure_name}")
     if class_names:
-        print(f"📋 加载了 {len(class_names)} 个类别名称")
+        log_info(f"加载了 {len(class_names)} 个类别名称")
     else:
-        print("⚠️  未找到类别名称文件 (classes.txt 或 data.yaml)")
+        log_warn("未找到类别名称文件 (classes.txt 或 data.yaml)")
     
     # 分析每个数据集分割（收集统计信息但不显示检查报告）
     total_missing = 0
@@ -473,10 +478,11 @@ def analyze_dataset(dataset_dir, show_stats=False):
         create_basic_stats_table(all_stats)
     
     # 3. 总体摘要
-    print(f"\n{'='*30} 总体摘要 {'='*30}")
-    print(f"📊 数据集分割数: {len(paths)}")
-    print(f"⚠️  总缺失标注: {total_missing}")
-    print(f"⚠️  总冗余标注: {total_redundant}")
+    print("")
+    log_info(f"{'='*30} 总体摘要 {'='*30}")
+    log_info(f"数据集分割数: {len(paths)}")
+    log_info(f"总缺失标注: {total_missing}")
+    log_info(f"总冗余标注: {total_redundant}")
     
     # 4. 检查报告（最后显示）
     for split_name, missing, redundant in missing_reports:
@@ -493,7 +499,7 @@ def main():
     args = parser.parse_args()
     
     if not os.path.exists(args.dataset_dir):
-        print(f"❌ 错误: 数据集目录不存在: {args.dataset_dir}")
+        log_error(f"错误: 数据集目录不存在: {args.dataset_dir}")
         return
     
     analyze_dataset(args.dataset_dir, args.stats)
