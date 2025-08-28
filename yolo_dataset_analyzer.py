@@ -11,7 +11,7 @@ import argparse
 import yaml
 import random
 from prettytable import PrettyTable
-from utils.yolo_utils import get_image_extensions, detect_yolo_structure
+from utils.yolo_utils import get_image_extensions, detect_yolo_structure, discover_class_names
 from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
 _LOG_FILE = tee_stdout_stderr('logs')
 
@@ -434,7 +434,9 @@ def analyze_dataset(dataset_dir, show_stats=False):
         return
     
     # 加载类别名称
-    class_names = load_class_names(dataset_dir)
+    # 优先复用统一的类别名发现工具
+    names_list, _src = discover_class_names(dataset_dir)
+    class_names = {i: n for i, n in enumerate(names_list)} if names_list else load_class_names(dataset_dir)
     
     # 输出结构类型信息
     structure_name = {
