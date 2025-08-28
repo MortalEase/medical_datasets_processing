@@ -130,3 +130,41 @@ def get_folder_size(path: str | Path) -> float:
     except Exception:
         pass
     return total / (1024 * 1024)
+
+
+def discover_class_names(
+    base_dir: str | Path,
+    structure: str | None = None,
+    labels_dir: str | None = None,
+) -> Tuple[List[str], str | None]:
+
+    base = Path(base_dir)
+    candidates = YAML_FILES + CLASS_FILES
+
+    # 1) 根目录优先
+    for n in candidates:
+        p = base / n
+        if p.is_file():
+            names = read_class_names(p)
+            if names:
+                return names, str(p)
+
+    # 2) labels 目录集合
+    label_dirs: List[str] = []
+    if labels_dir:
+        label_dirs.append(labels_dir)
+    else:
+        if structure is None:
+            structure, _img, _lbl = detect_yolo_structure(base)
+        label_dirs = yolo_label_dirs(base, structure) if structure != 'unknown' else []
+
+    for d in label_dirs:
+        dp = Path(d)
+        for n in candidates:
+            p = dp / n
+            if p.is_file():
+                names = read_class_names(p)
+                if names:
+                    return names, str(p)
+
+    return [], None
