@@ -17,6 +17,7 @@ from utils.yolo_utils import (
     get_image_extensions,
     list_possible_class_files,
     read_class_names,
+    discover_class_names,
 )
 
 
@@ -295,7 +296,8 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
         log_warn(f"数据不完整，丢失了 {total_original - total_split} 张图片")
     
     # 统计各集合中有标签的图片数量
-    log_info(f"\n标签图片分布:")
+    print()
+    log_info(f"标签图片分布:")
     for split in splits:
         labeled_count = sum(1 for img in split_files[split] if img in image_to_classes)
         log_info(f"{split}集标签图片: {labeled_count}")
@@ -303,7 +305,8 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
     
     # 统计各类别在不同集合中的分布
     if image_to_classes:
-        log_info(f"\n类别分布统计:")
+        print()
+        log_info(f"类别分布统计:")
         all_classes = set()
         for classes in image_to_classes.values():
             all_classes.update(classes)
@@ -341,23 +344,8 @@ def split_dataset(base_dir, output_dir, split_ratios, output_format=1, use_test=
         if use_test:
             data_yaml['test'] = test_rel
 
-        # 推断/读取类别名
-        names: list[str] = []
-        # 优先读取输入根目录下的 yaml 或 txt
-        for candidate in ['data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml', 'classes.txt', 'obj.names', 'names.txt']:
-            p = os.path.join(base_dir, candidate)
-            if os.path.isfile(p):
-                names = read_class_names(p)
-                if names:
-                    break
-        # 再尝试 labels/ 目录
-        if not names and structure in ('standard', 'mixed') and os.path.isdir(labels_dir):
-            for candidate in ['data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml', 'classes.txt', 'obj.names', 'names.txt']:
-                p = os.path.join(labels_dir, candidate)
-                if os.path.isfile(p):
-                    names = read_class_names(p)
-                    if names:
-                        break
+        # 推断/读取类别名（统一工具）
+        names, _src = discover_class_names(base_dir, structure=structure, labels_dir=labels_dir)
 
         # 若仍无 names，则根据出现的类别ID生成占位名
         if not names:
