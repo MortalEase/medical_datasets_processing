@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 from tqdm import tqdm
 from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
+from utils.yolo_utils import discover_class_names
 _LOG_FILE = tee_stdout_stderr('logs')
 
 IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp']
@@ -68,13 +69,10 @@ def detect_structure(root_dir: str):
 
 
 def load_classes(root_dir: str):
-    """尝试加载类别名称(优先 classes.txt)。如果不存在则返回空列表。"""
-    for name in ['classes.txt', 'obj.names', 'names.txt']:
-        fp = Path(root_dir) / name
-        if fp.exists():
-            with open(fp, 'r', encoding='utf-8') as f:
-                return [line.strip() for line in f if line.strip()]
-    return []
+    names, src = discover_class_names(root_dir)
+    if names:
+        log_info(f"已发现类别文件: {src} (共 {len(names)} 类)")
+    return names or []
 
 
 def iter_images(images_dir: str):
