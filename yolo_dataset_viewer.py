@@ -10,6 +10,7 @@ import sys
 import cv2
 import argparse
 from utils.logging_utils import tee_stdout_stderr, log_info, log_warn, log_error
+from utils.yolo_utils import discover_class_names, read_class_names
 _LOG_FILE = tee_stdout_stderr('logs')
 import numpy as np
 from pathlib import Path
@@ -53,51 +54,26 @@ class YOLODatasetViewer:
             self.setup_gui()
     
     def load_class_names(self, class_names_file=None):
-        """加载类别名称文件"""
+        # 1) 明确指定的文件
         if class_names_file and os.path.exists(class_names_file):
             try:
-                with open(class_names_file, 'r', encoding='utf-8') as f:
-                    for idx, line in enumerate(f):
-                        class_name = line.strip()
-                        if class_name:
-                            self.class_names[idx] = class_name
-                log_info(f"从指定文件加载类别名称: {class_names_file}")
-                return
+                names = read_class_names(class_names_file)
+                if names:
+                    self.class_names = {i: n for i, n in enumerate(names)}
+                    log_info(f"从指定文件加载类别名称: {class_names_file}")
+                    return
+                else:
+                    log_warn(f"指定的类别文件为空或不可解析: {class_names_file}")
             except Exception as e:
                 log_warn(f"读取指定类别文件失败: {e}")
-        
-        # 自动查找类别文件
-        possible_names = ["classes.txt", "names.txt", "class.names", "labels.txt", "data.yaml"]
-        
-        for name_file in possible_names:
-            class_file = self.dataset_path / name_file
-            if class_file.exists():
-                try:
-                    if name_file.endswith('.yaml'):
-                        # 处理YAML格式
-                        import yaml
-                        with open(class_file, 'r', encoding='utf-8') as f:
-                            data = yaml.safe_load(f)
-                            if 'names' in data:
-                                if isinstance(data['names'], list):
-                                    for idx, name in enumerate(data['names']):
-                                        self.class_names[idx] = name
-                                elif isinstance(data['names'], dict):
-                                    self.class_names = data['names']
-                    else:
-                        # 处理文本格式
-                        with open(class_file, 'r', encoding='utf-8') as f:
-                            for idx, line in enumerate(f):
-                                class_name = line.strip()
-                                if class_name:
-                                    self.class_names[idx] = class_name
-                    
-                    log_info(f"加载类别文件: {class_file}")
-                    return
-                except Exception as e:
-                    log_warn(f"读取类别文件失败: {e}")
-                    continue
-        
+
+        # 2) 自动发现
+        names, src = discover_class_names(self.dataset_path)
+        if names:
+            self.class_names = {i: n for i, n in enumerate(names)}
+            log_info(f"加载类别文件: {src}")
+            return
+
         log_warn("未找到类别名称文件，将显示类别ID")
     
     def scan_dataset(self):
@@ -355,15 +331,16 @@ class YOLODatasetViewer:
         
         self.ax.set_title(title, fontsize=12, pad=20)
         self.ax.axis('off')
-        
+
         # 更新显示
         plt.draw()
-        
+
         # 打印当前图片信息
-        log_info(f"\n📸 [{self.current_index + 1}/{len(self.image_files)}] {img_name}")
+        print("")
+        log_info(f"[{self.current_index + 1}/{len(self.image_files)}] {img_name}")
         log_info(f"路径: {img_path}")
         log_info(f"标注框数量: {len(annotations)}")
-        
+
         if annotations:
             log_info("标注详情:")
             class_counts = {}
@@ -371,7 +348,7 @@ class YOLODatasetViewer:
                 class_id = ann['class_id']
                 class_name = self.class_names.get(class_id, f"Class_{class_id}")
                 class_counts[class_name] = class_counts.get(class_name, 0) + 1
-            
+
             for class_name, count in class_counts.items():
                 log_info(f"   - {class_name}: {count} 个")
     
