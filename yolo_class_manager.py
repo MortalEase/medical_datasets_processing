@@ -17,13 +17,11 @@ from utils.yolo_utils import (
     yolo_label_dirs,
     iter_label_files,
     list_possible_class_files,
+    discover_class_names,
     read_class_names,
     write_class_names,
     get_folder_size,
 )
-
-
-
 
 def analyze_dataset_classes(base_dir):
     """分析数据集中的类别使用情况
@@ -58,14 +56,17 @@ def analyze_dataset_classes(base_dir):
             except Exception as e:
                 log_warn(f"无法读取标签文件 {label_path}: {e}")
     
-    # 查找类别文件
-    class_files = list_possible_class_files(base_dir)
-    class_names = []
-    
-    if class_files:
-        class_file_path = os.path.join(base_dir, class_files[0])
-        class_names = read_class_names(class_file_path)
-        log_info(f"找到类别文件: {class_files[0]}")
+    # 发现并读取类别名称
+    class_names, src = discover_class_names(base_dir)
+    if class_names:
+        log_info(f"找到类别文件: {src}")
+    else:
+        # 兼容旧逻辑(仅根目录扫描)
+        class_files = list_possible_class_files(base_dir)
+        if class_files:
+            class_file_path = os.path.join(base_dir, class_files[0])
+            class_names = read_class_names(class_file_path)
+            log_info(f"找到类别文件: {class_files[0]}")
     
     return class_usage, class_names
 
@@ -130,8 +131,8 @@ def delete_classes(base_dir, explicit_class_ids=None, backup=True, min_samples=N
         backup_dir = f"{base_dir}_backup_before_delete_{timestamp}"
         if os.path.exists(backup_dir):
             shutil.rmtree(backup_dir)
-    shutil.copytree(base_dir, backup_dir)
-    log_info(f"已创建备份: {backup_dir}")
+        shutil.copytree(base_dir, backup_dir)
+        log_info(f"已创建备份: {backup_dir}")
 
     structure, _, _ = detect_yolo_structure(base_dir)
     label_dirs = yolo_label_dirs(base_dir, structure)
@@ -177,12 +178,20 @@ def delete_classes(base_dir, explicit_class_ids=None, backup=True, min_samples=N
 
     # 更新类别文件
     class_files = list_possible_class_files(base_dir)
-    if class_files and class_names:
+    if class_names:
         remaining_indices = [i for i in range(len(class_names)) if i not in target_ids]
         new_names = [class_names[i] for i in remaining_indices]
-        for cf in class_files:
-            write_class_names(os.path.join(base_dir, cf), new_names)
-            log_info(f"已更新类别文件: {cf}")
+        # 目标写入列表: 根目录已存在的类文件 + 发现到的类别文件路径(若不在根目录)
+        write_targets = set(os.path.join(base_dir, cf) for cf in class_files)
+        _names2, src_path = discover_class_names(base_dir)
+        if src_path:
+            write_targets.add(src_path)
+        for fp in write_targets:
+            try:
+                write_class_names(fp, new_names)
+                log_info(f"已更新类别文件: {os.path.relpath(fp, base_dir) if os.path.commonpath([base_dir, os.path.dirname(fp)]) == base_dir else fp}")
+            except Exception as e:
+                log_warn(f"更新类别文件失败: {fp} - {e}")
 
     log_info("删除完成")
     log_info(f"删除类别: {sorted(list(target_ids))}")
@@ -196,9 +205,10 @@ def rename_classes(base_dir, class_renames, backup=True):
     """重命名类别 (只更新类别文件中的名称，不改变标签文件中的ID)"""
     log_info(f"开始重命名类别: {class_renames}")
     
-    # 查找类别文件
+    # 查找类别文件与名称
+    names, src = discover_class_names(base_dir)
     class_files = list_possible_class_files(base_dir)
-    if not class_files:
+    if not names and not class_files:
         log_error("未找到类别文件")
         return False
     
@@ -209,11 +219,14 @@ def rename_classes(base_dir, class_renames, backup=True):
         if os.path.exists(backup_dir):
             shutil.rmtree(backup_dir)
         shutil.copytree(base_dir, backup_dir)
-    log_info(f"已创建备份: {backup_dir}")
+        log_info(f"已创建备份: {backup_dir}")
     
     # 读取现有类别名称
-    class_file_path = os.path.join(base_dir, class_files[0])
-    class_names = read_class_names(class_file_path)
+    if names:
+        class_names = names
+    else:
+        class_file_path = os.path.join(base_dir, class_files[0])
+        class_names = read_class_names(class_file_path)
     
     if not class_names:
         log_error("无法读取类别名称")
@@ -232,10 +245,16 @@ def rename_classes(base_dir, class_renames, backup=True):
             log_warn(f"类别 '{old_name}' 不存在")
     
     # 更新所有类别文件
-    for class_file in class_files:
-        class_file_path = os.path.join(base_dir, class_file)
-        write_class_names(class_file_path, updated_class_names)
-    log_info(f"已更新类别文件: {class_file}")
+    # 写回所有根目录类文件 + 发现到的类别文件
+    write_targets = set(os.path.join(base_dir, cf) for cf in class_files)
+    if src:
+        write_targets.add(src)
+    for fp in write_targets:
+        try:
+            write_class_names(fp, updated_class_names)
+            log_info(f"已更新类别文件: {os.path.relpath(fp, base_dir) if os.path.commonpath([base_dir, os.path.dirname(fp)]) == base_dir else fp}")
+        except Exception as e:
+            log_warn(f"更新类别文件失败: {fp} - {e}")
     
     log_info(f"更新后类别: {updated_class_names}")
     log_info("重命名操作完成!")
@@ -271,7 +290,7 @@ def cleanup_backups(base_dir, keep_count=5, dry_run=False):
         timestamp = extract_timestamp(backup_dir)
         size = get_folder_size(backup_dir)
         status = "保留" if i < keep_count else "删除"
-    log_info(f"  {i+1}. {os.path.basename(backup_dir)} (时间: {timestamp}, 大小: {size:.1f}MB) - {status}")
+        log_info(f"  {i+1}. {os.path.basename(backup_dir)} (时间: {timestamp}, 大小: {size:.1f}MB) - {status}")
     
     # 删除超出保留数量的备份
     to_delete = backup_dirs[keep_count:]
@@ -359,12 +378,16 @@ def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry
     - dry_run: 演习模式，仅统计与预览，不实际改写
     """
     # 读取当前类别
+    names, src = discover_class_names(base_dir)
     class_files = list_possible_class_files(base_dir)
-    if not class_files:
+    if not names and not class_files:
         log_error("未找到类别文件，无法进行重排")
         return False
-    current_class_file = os.path.join(base_dir, class_files[0])
-    current_names = read_class_names(current_class_file)
+    if names:
+        current_names = names
+    else:
+        current_class_file = os.path.join(base_dir, class_files[0])
+        current_names = read_class_names(current_class_file)
     if not current_names:
         log_error("无法读取当前类别名称")
         return False
@@ -410,7 +433,7 @@ def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry
         if os.path.exists(backup_dir):
             shutil.rmtree(backup_dir)
         shutil.copytree(base_dir, backup_dir)
-    log_info(f"已创建备份: {backup_dir}")
+        log_info(f"已创建备份: {backup_dir}")
 
     structure, _, _ = detect_yolo_structure(base_dir)
     label_dirs = yolo_label_dirs(base_dir, structure)
@@ -452,10 +475,15 @@ def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry
 
     # 更新类别文件
     if not dry_run:
-        for class_file in class_files:
-            class_file_path = os.path.join(base_dir, class_file)
-            write_class_names(class_file_path, target_class_names)
-            log_info(f"已更新类别文件: {class_file}")
+        write_targets = set(os.path.join(base_dir, cf) for cf in class_files)
+        if src:
+            write_targets.add(src)
+        for fp in write_targets:
+            try:
+                write_class_names(fp, target_class_names)
+                log_info(f"已更新类别文件: {os.path.relpath(fp, base_dir) if os.path.commonpath([base_dir, os.path.dirname(fp)]) == base_dir else fp}")
+            except Exception as e:
+                log_warn(f"更新类别文件失败: {fp} - {e}")
 
     log_info("重排完成(预览)" if dry_run else "重排完成")
     log_info(f"处理的标签文件: {updated_files}")
