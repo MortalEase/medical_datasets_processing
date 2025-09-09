@@ -23,6 +23,39 @@ from utils.yolo_utils import (
     get_folder_size,
 )
 
+def _backup_label_files_only(base_dir: str, structure: str) -> str:
+    """仅备份标注文件(.txt，且排除 classes.txt/data.yaml 等)到独立目录."""
+    label_dirs = yolo_label_dirs(base_dir, structure)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = f"{base_dir}_labels_backup_{timestamp}"
+
+    if os.path.exists(backup_dir):
+        shutil.rmtree(backup_dir)
+    os.makedirs(backup_dir, exist_ok=True)
+
+    copied = 0
+    for labels_dir in label_dirs:
+        # 计算相对路径，保持多子集(train/val/test等)层级结构
+        try:
+            rel = os.path.relpath(labels_dir, base_dir)
+        except ValueError:
+            # 不在同一根时，退化为使用目录名
+            rel = os.path.basename(labels_dir)
+        dst_dir = os.path.join(backup_dir, rel)
+        os.makedirs(dst_dir, exist_ok=True)
+
+        for fname in iter_label_files(labels_dir, structure):
+            src = os.path.join(labels_dir, fname)
+            dst = os.path.join(dst_dir, fname)
+            try:
+                shutil.copy2(src, dst)
+                copied += 1
+            except Exception as e:
+                log_warn(f"备份失败: {src} -> {dst} - {e}")
+
+    log_info(f"已创建标注备份: {backup_dir} (共 {copied} 个标签文件)")
+    return backup_dir
+
 def analyze_dataset_classes(base_dir):
     """分析数据集中的类别使用情况
     Returns: (class_usage: dict[int,int], class_names: list[str])
@@ -72,7 +105,7 @@ def analyze_dataset_classes(base_dir):
 
 
 def delete_classes(base_dir, explicit_class_ids=None, backup=True, min_samples=None, min_percentage=None, assume_yes=False, dry_run=False):
-    """删除类别：支持显式ID、最小样本数阈值、最小占比阈值。"""
+    """删除类别：支持显式ID、最小样本数阈值、最小占比阈值."""
     explicit_class_ids = set(explicit_class_ids or [])
     class_usage, class_names = analyze_dataset_classes(base_dir)
     if class_usage is None:
@@ -116,7 +149,7 @@ def delete_classes(base_dir, explicit_class_ids=None, backup=True, min_samples=N
     log_info('\n'.join(preview_lines))
 
     if dry_run:
-        log_info("[预览模式] 未写入。使用 --execute 进行实际删除。")
+        log_info("[预览模式] 未写入，使用 --execute 进行实际删除")
         return True
 
     if not assume_yes:
@@ -125,16 +158,10 @@ def delete_classes(base_dir, explicit_class_ids=None, backup=True, min_samples=N
             log_info("已取消")
             return False
 
-    # 备份
-    if backup:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = f"{base_dir}_backup_before_delete_{timestamp}"
-        if os.path.exists(backup_dir):
-            shutil.rmtree(backup_dir)
-        shutil.copytree(base_dir, backup_dir)
-        log_info(f"已创建备份: {backup_dir}")
-
+    # 备份：仅备份标注文件
     structure, _, _ = detect_yolo_structure(base_dir)
+    if backup:
+        _backup_label_files_only(base_dir, structure)
     label_dirs = yolo_label_dirs(base_dir, structure)
 
     remaining_used_classes = sorted([c for c in used_classes if c not in target_ids])
@@ -212,14 +239,10 @@ def rename_classes(base_dir, class_renames, backup=True):
         log_error("未找到类别文件")
         return False
     
-    # 创建备份
+    # 创建备份：仅备份标注文件
     if backup:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = f"{base_dir}_backup_before_rename_{timestamp}"
-        if os.path.exists(backup_dir):
-            shutil.rmtree(backup_dir)
-        shutil.copytree(base_dir, backup_dir)
-        log_info(f"已创建备份: {backup_dir}")
+        structure, _, _ = detect_yolo_structure(base_dir)
+        _backup_label_files_only(base_dir, structure)
     
     # 读取现有类别名称
     if names:
@@ -368,7 +391,7 @@ def show_dataset_info(base_dir):
 
 
 def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry_run=True, require_same_set=False):
-    """根据目标类别顺序重排数据集中所有标签文件的类别ID，并更新类别文件。
+    """根据目标类别顺序重排数据集中所有标签文件的类别ID，并更新类别文件.
 
     参数:
     - base_dir: 数据集根目录
@@ -426,14 +449,10 @@ def reindex_classes(base_dir, target_class_names, strict=False, backup=True, dry
         else:
             old_to_new[old_id] = None  # 丢弃
 
-    # 创建备份
+    # 创建备份：仅备份标注文件
     if backup and not dry_run:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = f"{base_dir}_backup_before_reindex_{timestamp}"
-        if os.path.exists(backup_dir):
-            shutil.rmtree(backup_dir)
-        shutil.copytree(base_dir, backup_dir)
-        log_info(f"已创建备份: {backup_dir}")
+        structure, _, _ = detect_yolo_structure(base_dir)
+        _backup_label_files_only(base_dir, structure)
 
     structure, _, _ = detect_yolo_structure(base_dir)
     label_dirs = yolo_label_dirs(base_dir, structure)
