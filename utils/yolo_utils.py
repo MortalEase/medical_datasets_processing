@@ -112,9 +112,10 @@ def yolo_label_dirs(base_dir: str | Path, structure: str) -> List[str]:
 
 def iter_label_files(label_dir: str | Path, structure: str) -> Iterable[str]:
     for f in os.listdir(label_dir):
+        # 仅遍历 .txt 标签文件，并在任何结构下都跳过类别/配置文件
         if not f.endswith('.txt'):
             continue
-        if structure == 'mixed' and (f in CLASS_FILES or f in YAML_FILES):
+        if f in CLASS_FILES or f in YAML_FILES:
             continue
         yield f
 
