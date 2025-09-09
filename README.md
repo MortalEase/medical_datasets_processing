@@ -9,6 +9,7 @@
 | yolo_class_manager.py | YOLO 类别增删改/重排/清理 | format1/format2/standard/mixed | 就地修改 | delete/rename/reindex | 自动备份 |
 | yolo_dataset_viewer.py | 可视化查看/筛选/统计 | format1/format2 | 无写出 | -d --filter-classes | Matplotlib GUI |
 | yolo2coco.py | YOLO -> COCO 转换(+可分层划分) | format1/format2/standard/mixed | COCO JSON | -d -o --split | standard/mixed 可再划分 |
+| yolo_format_convert.py | YOLO 结构重排 format1↔format2 | format1/format2 | format1/format2 | -d -o [--to] [--move] | 复制或移动 |
 | coco_dataset_split.py | COCO 分层再划分 | COCO 单文件 | 多分割 COCO | -i -o --train_ratio | 类别平衡抽样 |
 | coco_dataset_analyzer.py | COCO JSON 多分割统计 | COCO (annotations/*.json) | 终端输出 | -d --stats | 图片存在性检查 |
 | voc2yolo.py | VOC XML -> YOLO | VOC Annotations + JPEGImages | YOLO standard/mixed | -i -o --structure | 可生成 data.yaml |
@@ -388,6 +389,30 @@ type tmp.json | more   # Windows 查看开头内容
 
 ## convert_medical_to_yolo.py
 医学影像转YOLO格式转换工具
+
+## yolo_format_convert.py
+YOLO 目录结构重排工具（不改内容）
+
+用途：在格式一（train/val/test 为顶层，各自含 images/labels）与格式二（顶层为 images/labels，其下 train/val/test）之间互相转换。
+
+```bash
+# 自动识别输入结构并转换为相反结构
+python yolo_format_convert.py -d path/to/yolo_dataset -o path/to/out_dir
+
+# 显式指定目标结构：--to 1 (输出 format1) 或 --to 2 (输出 format2)
+python yolo_format_convert.py -d path/to/yolo_dataset -o path/to/out_dir --to 2
+python yolo_format_convert.py -d path/to/yolo_dataset -o path/to/out_dir --to 1
+
+# 采用移动而非复制（会原地搬走源文件）
+python yolo_format_convert.py -d path/to/yolo_dataset -o path/to/out_dir --move
+
+# 若输出目录已存在且非空，需要明确允许覆盖
+python yolo_format_convert.py -d path/to/yolo_dataset -o path/to/out_dir --overwrite
+```
+
+说明：
+- 复制（或移动）各 split 的 images/* 与 labels/*.txt（自动排除 classes.txt / data.yaml 等类别与配置文件）。
+- 会尝试从输入根目录与常见 labels 目录拷贝 classes.txt / data.yaml 等到输出根目录。
 
 **输出格式**：生成格式二（`dataset/images/train/ + dataset/labels/train/` 等）YOLO数据集
 
