@@ -67,14 +67,16 @@ def write_class_names(path: str | Path, names: List[str]) -> None:
 def detect_yolo_structure(base_dir: str | Path) -> Tuple[str, str | None, str | None]:
     base = Path(base_dir)
 
-    if (base / 'images').exists() and (base / 'labels').exists():
-        return 'standard', str(base / 'images'), str(base / 'labels')
-
+    # 先检测已分割结构，避免 format2 被误判为 standard
     if (base / 'train' / 'images').exists() and (base / 'train' / 'labels').exists():
         return 'format1', str(base), str(base)
 
     if (base / 'images' / 'train').exists() and (base / 'labels' / 'train').exists():
         return 'format2', str(base), str(base)
+
+    # 再检测标准结构（未分割）
+    if (base / 'images').exists() and (base / 'labels').exists():
+        return 'standard', str(base / 'images'), str(base / 'labels')
 
     try:
         files = list(base.iterdir())
